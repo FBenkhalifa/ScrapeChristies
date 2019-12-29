@@ -8,20 +8,23 @@ library(seleniumPipes)
 
 # Set up client -----------------------------------------------------------
 
+url_filter <- "https://www.christies.com/Results"
+
 # 1 Start connection
 rD <- rsDriver(verbose = FALSE, chromever = "79.0.3945.36" )
 myclient <- rD$client
 
 # 2 Navigate to Christies page
 myclient$navigate(url_filter)
-myclient$getTitle()
+
 
 # Extract filter ----------------------------------------------------------
 
-l <- myclient$click("css selector", "#refine-results .ng-binding")
-h <- myclient$findElement(using = "css selector", value = ".follow-text")
-h <- myclient$findElement(using = "xpath", value ='//*[@id="refine-results"]/cc-filters/h4[2]')
-h <- myclient$findElement(using = "css selector", value ='.filter--container--header')
+# 1 Start from the auction side and click on filter
+myclient <- myclient$findElement(using = "xpath", value ='//*[@id="refine-results"]/cc-filters/h4[2]')
+myclient$highlightElement()
+myclient$clickElement()
+
 
 # Write function which loops through location category...
 filter_n <- read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".item-container--label") %>% length
@@ -32,30 +35,22 @@ l1 <- read_html(myclient$getPageSource()[[1]]) %>%
   html_text(trim = TRUE) %>%
   gsub("\n.*$", "", .)
 
-xpath_filter_l1 <- paste0('//*[@id="refine-results"]/cc-filters/div[1]/ul/li[', seq_along(l1), ']/cc-multi-select-box/div/label')
-
-# Check manually if we can get by on level 2
-# 1 Navigate client to level 1 filter element and click
-h <- myclient$findElement(using = "xpath", value = i)
+xpath_filter_l1 <- paste0('//*[@id="refine-results"]/cc-filters/div[1]/ul/li[',
+                          seq_along(l1),
+                          ']/cc-multi-select-box/div/label') %>%
+  set_names(l1)
+c <- '//*[@id="refine-results"]/cc-filters/div[1]/ul'
+h <- myclient$findElement(using = "xpath", value = c)
+h <- myclient$findElement(using = "css selector", value = '.filter--container--header')
 h$highlightElement()
-h$clickElement()
-
-# 2 Store the names of the level 2 filter criteria
-l2 <- read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".checkbox--label") %>% html_text(trim = TRUE)
-
-# 3 Quick check of the correct is chosen for dubay
-dubai <- '//*[@id="refine-results"]/cc-filters/div[1]/ul/li[1]/cc-multi-select-box/div/div/div[2]/ul/li[3]/label'
-read_html(myclient$getPageSource()[[1]]) %>% html_nodes(xpath = dubai) %>% html_text
-h <- myclient$findElement(using = "xpath", value = dubai)
-h$highlightElement()
-h$clickElement()
-
+location <- c('//*[@id="refine-results"]/cc-filters/div[1]/ul/li[2]/cc-multi-select-box/div/label')
 ## Write a function to store the xpaths for the filters
+i = xpath_filter_l1[2]
 for (i in xpath_filter_l1) {
   # 1 Navigate client to level 1 filter element and click
-  h <- myclient$findElement(using = "xpath", value = i)
+  myclient <- myclient$findElement(using = "xpath", value = i)
   h$highlightElement()
-  h$clickElement()
+  myclient$clickElement()
 
   # 2 Store the names of the level 2 filter criteria
   l2 <- read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".checkbox--label") %>% html_text(trim = TRUE)
