@@ -3,7 +3,6 @@ library(xml2)
 library(rvest)
 library(RSelenium)
 library(tidyverse)
-library(seleniumPipes)
 library(stringr)
 
 # Define static Variables
@@ -24,6 +23,7 @@ myclient$navigate(URL_FILTER)
 
 
 # Extract filter ----------------------------------------------------------
+
 
 # 1 Start from the auction side and click on filter
 cursor <- myclient$findElement(using = "xpath", value = FILTER_BUTTON)
@@ -102,14 +102,21 @@ xpath_list %>% set_names(xpath_l1)
 .item-container--dropdown-items
 
 
+# Extract available options
+items <- text_box %>%
+  html_text(trim = TRUE) %>%
+  gsub("(?<=[\\s])\\s*|^\\s+|\\s+$", "", ., perl = TRUE) %>%
+  strsplit(., "\n")
 
+text_box %>% html_nodes(xpath = "//label[@id]") %>% html_attrs()
+id_value <- text_box %>% html_nodes(xpath = '//li[@class="item-container--dropdown-items--item ng-scope"]//*[@id]') %>% html_attr("id")
+id_nodes <- text_box %>% html_nodes(xpath = '//li[@class="item-container--dropdown-items--item ng-scope"]//*[@id]')
+row <- which(!((items %>% unlist) %in% (id_nodes %>% html_text)))
+items %>% unlist %>% .[row]
 
-
-
-
-
-
-
+tibble(item = items %>% unlist, id = id_value )
+items %>% unlist %>% names
+id_value %>% names
 Click <- function(.xpath){
 
   cursor <- cursor$findElement(using = "xpath",
