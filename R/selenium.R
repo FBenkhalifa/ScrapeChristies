@@ -108,25 +108,23 @@ items <- text_box %>%
   gsub("(?<=[\\s])\\s*|^\\s+|\\s+$", "", ., perl = TRUE) %>%
   strsplit(., "\n")
 
-text_box %>% html_nodes(xpath = "//label[@id]") %>% html_attrs()
-id_value <- text_box %>% html_nodes(xpath = '//li[@class="item-container--dropdown-items--item ng-scope"]//*[@id]') %>% html_attr("id")
-id_nodes <- text_box %>% html_nodes(xpath = '//li[@class="item-container--dropdown-items--item ng-scope"]//*[@id]')
-row <- which(!((items %>% unlist) %in% (id_nodes %>% html_text)))
-items %>% unlist %>% .[row]
+# Convert to vector to coerce them to a tbl
+items_list <- items %>% unlist(use.names = FALSE)
 
-tibble(item = items %>% unlist, id = id_value )
-items %>% unlist %>% names
-id_value %>% names
-Click <- function(.xpath){
+# Extract the nodes where the IDs can be found
+id_nodes <- text_box %>%
+  html_nodes(xpath = '//li[@class="item-container--dropdown-items--item ng-scope"]//*[@id]')
 
-  cursor <- cursor$findElement(using = "xpath",
-                     value = .xpath)
-  cursor$highlightElement()
+# Extract ID values
+id_values <- id_nodes %>% html_attr("id") %>% as.numeric %>% unname
 
-}
+# Check if there are any items which appear on the screen but have no ID assigned
+id_missing <- !((items_list) %in% (id_nodes %>% html_text))
 
-Click(xpath_l2['Beaune'])
-Click(xpath_l1['Category'])
+items_list[id_missing]# The most recent auctions cannot be found
+
+# Create a tbl with the item and the id value
+tibble(item = items_list[!id_missing], id = id_values)
 
 # Get lots information ----------------------------------------------------
 
