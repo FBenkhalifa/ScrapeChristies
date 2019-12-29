@@ -4,6 +4,7 @@ library(rvest)
 library(RSelenium)
 library(tidyverse)
 library(seleniumPipes)
+library(stringr)
 
 # Define static Variables
 URL_FILTER <- "https://www.christies.com/Results"
@@ -34,12 +35,33 @@ l1 <- read_html(myclient$getPageSource()[[1]]) %>%
   html_text(trim = TRUE) %>%
   gsub("\n.*$", "", .)
 
+# 3 Store the names of the level 2 filter criteria
+l2 <- read_html(myclient$getPageSource()[[1]]) %>%
+  html_nodes(".checkbox--label") %>%
+  html_text(trim = TRUE)
+
+text_box <- read_html(myclient$getPageSource()[[1]]) %>%
+  html_nodes(".item-container--dropdown-items") %>%
+  set_names(l1)
+
+text_box %>%
+  map(~html_nodes(., ".checkbox--label") %>% html_text(trim = TRUE))
+
+text_box %>%
+  map(~html_nodes(., ".checkbox--label") %>% html_attr(trim = TRUE))
+
+text_box[4] %>% html_nodes(., ".checkbox--label")  %>% html_attr("id")
 # 3 Get xpaths for the filters on level 1
 xpath_l1 <- paste0('//*[@id="refine-results"]/cc-filters/div[1]/ul/li[',
                           seq_along(l1),
                           ']/cc-multi-select-box/div/label') %>%
   set_names(l1)
 
+text_box %>% html_text(trim = TRUE) %>% gsub("\n", "", .) %>% str_squish
+text_box %>%
+  html_text(trim = TRUE) %>%
+  gsub("(?<=[\\s])\\s*|^\\s+|\\s+$", "", ., perl = TRUE) %>%
+  strsplit(., "\n")
 ## Write a function to store the xpaths for the filters
 
 xpath_list <- list()
@@ -76,6 +98,28 @@ for (i in xpath_l1[1:3]) {
 
 xpath_list %>% set_names(xpath_l1)
 
+# Location
+.item-container--dropdown-items
+
+
+
+
+
+
+
+
+
+
+Click <- function(.xpath){
+
+  cursor <- cursor$findElement(using = "xpath",
+                     value = .xpath)
+  cursor$highlightElement()
+
+}
+
+Click(xpath_l2['Beaune'])
+Click(xpath_l1['Category'])
 
 # Get lots information ----------------------------------------------------
 
