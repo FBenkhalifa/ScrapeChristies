@@ -5,72 +5,77 @@ library(RSelenium)
 library(tidyverse)
 library(seleniumPipes)
 
+# Define static Variables
+URL_FILTER <- "https://www.christies.com/Results"
+FILTER_BUTTON <- '//*[@id="refine-results"]/cc-filters/h4[2]'
+BACK <- '//*[@id="refine-results"]/cc-filters/div[1]/ul/li[1]/cc-multi-select-box/div/label'
 
 # Set up client -----------------------------------------------------------
-
-url_filter <- "https://www.christies.com/Results"
+cursor$highlightElement()
+cursor$clickElement()
 
 # 1 Start connection
 rD <- rsDriver(verbose = FALSE, chromever = "79.0.3945.36" )
 myclient <- rD$client
 
 # 2 Navigate to Christies page
-myclient$navigate(url_filter)
+myclient$navigate(URL_FILTER)
 
 
 # Extract filter ----------------------------------------------------------
 
 # 1 Start from the auction side and click on filter
-cursor <- myclient$findElement(using = "xpath", value ='//*[@id="refine-results"]/cc-filters/h4[2]')
-cursor$highlightElement()
+cursor <- myclient$findElement(using = "xpath", value = FILTER_BUTTON)
 cursor$clickElement()
 
-
-# Write function which loops through location category...
-filter_n <- read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".item-container--label") %>% length
-
-# Get xpaths for the filters on level 1
+# 2 get names of first level
 l1 <- read_html(myclient$getPageSource()[[1]]) %>%
   html_nodes(".item-container--label") %>%
   html_text(trim = TRUE) %>%
   gsub("\n.*$", "", .)
 
-xpath_filter_l1 <- paste0('//*[@id="refine-results"]/cc-filters/div[1]/ul/li[',
+# 3 Get xpaths for the filters on level 1
+xpath_l1 <- paste0('//*[@id="refine-results"]/cc-filters/div[1]/ul/li[',
                           seq_along(l1),
                           ']/cc-multi-select-box/div/label') %>%
   set_names(l1)
 
 ## Write a function to store the xpaths for the filters
-i = xpath_filter_l1[2]
-for (i in xpath_filter_l1) {
+
+xpath_list <- list()
+for (i in xpath_l1[1:3]) {
+   i = xpath_l1[1]
+   i = xpath_l1[2]
+   i = xpath_l1[3]
   # 1 Navigate client to level 1 filter element and click
   cursor <- myclient$findElement(using = "xpath", value = i)
   cursor$highlightElement()
   cursor$clickElement()
+  Sys.sleep(1)
 
-  # 2 Store the names of the level 2 filter criteria
-  l2 <- read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".checkbox--label") %>% html_text(trim = TRUE)
+  # 3 Store the names of the level 2 filter criteria
+  l2 <- read_html(myclient$getPageSource()[[1]]) %>%
+    html_nodes(".checkbox--label") %>%
+    html_text(trim = TRUE)
 
-  # 3 Construct xpaths able to click the respective button
+  # 4 Construct xpaths able to click the respective button
   xpath_str <- paste0('div/div[2]/ul/li[', c(1:length(l2)), ']/label') %>% set_names(l2)
-  xpath_filter_l2 <- xpath_str %>% map_chr(~gsub("label$", ., i))
+  xpath_l2 <- xpath_str %>% map_chr(~gsub("label$", ., i))
 
-  # 1 Navigate client to level 1 filter element and click
-  cursor <- myclient$findElement(using = "xpath", value = xpath_filter_l2[1])
+  # 5 Navigate client to level 1 filter element and click
+  # cursor <- myclient$findElement(using = "xpath", value = xpath_l2[1])
+  xpath_list[i] <- list(xpath_l2)
+
+  # 2 Bring cursor back
+  cursor$findElement(using = "xpath",
+                     value = BACK)
   cursor$highlightElement()
   cursor$clickElement()
 
 }
 
+xpath_list %>% set_names(xpath_l1)
 
-
-
-xpath_str <- paste0('div/div[2]/ul/li[', c(1:length(l2)), ']/label')
-xpath_filter_l2 <- gsub("label$", xpath_str, i)
-
-myclient$navigate("http://www.google.com/ncr")
-webElem <- myclient$findElement(using = "name", value = "q")
-webElem$highlightElement()
 
 # Get lots information ----------------------------------------------------
 
