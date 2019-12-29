@@ -21,9 +21,9 @@ myclient$navigate(url_filter)
 # Extract filter ----------------------------------------------------------
 
 # 1 Start from the auction side and click on filter
-myclient <- myclient$findElement(using = "xpath", value ='//*[@id="refine-results"]/cc-filters/h4[2]')
-myclient$highlightElement()
-myclient$clickElement()
+cursor <- myclient$findElement(using = "xpath", value ='//*[@id="refine-results"]/cc-filters/h4[2]')
+cursor$highlightElement()
+cursor$clickElement()
 
 
 # Write function which loops through location category...
@@ -39,18 +39,14 @@ xpath_filter_l1 <- paste0('//*[@id="refine-results"]/cc-filters/div[1]/ul/li[',
                           seq_along(l1),
                           ']/cc-multi-select-box/div/label') %>%
   set_names(l1)
-c <- '//*[@id="refine-results"]/cc-filters/div[1]/ul'
-h <- myclient$findElement(using = "xpath", value = c)
-h <- myclient$findElement(using = "css selector", value = '.filter--container--header')
-h$highlightElement()
-location <- c('//*[@id="refine-results"]/cc-filters/div[1]/ul/li[2]/cc-multi-select-box/div/label')
+
 ## Write a function to store the xpaths for the filters
 i = xpath_filter_l1[2]
 for (i in xpath_filter_l1) {
   # 1 Navigate client to level 1 filter element and click
-  myclient <- myclient$findElement(using = "xpath", value = i)
-  h$highlightElement()
-  myclient$clickElement()
+  cursor <- myclient$findElement(using = "xpath", value = i)
+  cursor$highlightElement()
+  cursor$clickElement()
 
   # 2 Store the names of the level 2 filter criteria
   l2 <- read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".checkbox--label") %>% html_text(trim = TRUE)
@@ -60,9 +56,9 @@ for (i in xpath_filter_l1) {
   xpath_filter_l2 <- xpath_str %>% map_chr(~gsub("label$", ., i))
 
   # 1 Navigate client to level 1 filter element and click
-  h <- myclient$findElement(using = "xpath", value = xpath_filter_l2[1])
-  h$highlightElement()
-  h$clickElement()
+  cursor <- myclient$findElement(using = "xpath", value = xpath_filter_l2[1])
+  cursor$highlightElement()
+  cursor$clickElement()
 
 }
 
