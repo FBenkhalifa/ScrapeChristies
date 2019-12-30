@@ -13,10 +13,11 @@ lots_URLs <- lots %>%
 lots_d <- read_html(lots_URLs[1])
 # Get summary on lot page
 lots_summary <- lots_d %>% html_nodes("strong , em") %>% html_text
-lots_results <- lots_d %>% html_nodes("#LotListings") %>% html_nodes(xpath = "//a") %>% html_attr("href") # number 1
 lot_finder <- lots_d %>% html_nodes(xpath = "//a[@target = '_blank' and @class ='print--page']") %>% html_attr("href")
-
-
+# lots_results <- lots_d %>% html_nodes("#LotListings") %>% html_nodes(xpath = "//a") %>% html_attr("href")[1]
+# read_html("https://www.christies.com/Results/PrintAuctionResults.aspx?saleid=25313&lid=1") %>%
+#   html_nodes(xpath = "//table[@id = 'dlResults']") %>%
+#   html_table(fill = TRUE)
 # Lots level --------------------------------------------------------------
 
 # Extract lot id to construct lot elements
