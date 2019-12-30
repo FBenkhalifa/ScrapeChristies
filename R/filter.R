@@ -29,6 +29,17 @@ myclient$navigate(URL_FILTER)
 cursor <- myclient$findElement(using = "xpath", value = FILTER_BUTTON)
 cursor$clickElement()
 
+# 2 get names of first level filter
+l1 <- read_html(myclient$getPageSource()[[1]]) %>%
+  html_nodes(".item-container--label") %>%
+  html_text(trim = TRUE) %>%
+  gsub("\n.*$", "", .)
+
+# 3 Get main element
+text_box <- read_html(myclient$getPageSource()[[1]]) %>%
+  html_nodes(".item-container--dropdown-items") %>%
+  set_names(l1)
+
 # 2 Extract available options
 items <- text_box %>%
   html_text(trim = TRUE) %>%
@@ -75,26 +86,15 @@ id_dict <- left_join(full_tbl, URL_l1, by = "l1")
 # Comment: It is not optimal that the URLs are hardcoded but it will save the
 # purpose for now
 
-
-str(param_get(urls = "https://www.christies.com/Results?month=6&scids=13%7C7%7C22%7C10%7C5%7C8&year=2015&locations=38%7C40%7C105%7C43%7C115",
-              parameter_names = URL_l1$id_l1))
-
-URL_p <- url_parse(URL)
-param_set(urls = URL,  key = "locations" , value = 1)
-param_set(urls = URL, value = c(1,1,1,1), key = URL_l1$id_l1)
-
-values = c(1,1,1,1)
-
-id_dict %>% View
-vec <- c(c("African, Oceanic & Pre-Columbian Art", "Antiquities", "Asian Art",
+vec1 <- c(c("African, Oceanic & Pre-Columbian Art", "Antiquities", "Asian Art",
            "Books & Manuscripts", "Fine Art", "Furniture & Decorative Arts"),
          c("Los Angeles", "Milan", "Mumbai", "New York", "Online"),
          c("June"),
          c( "2015"))
-vec <- c("Fine Art")
+vec2 <- c("Fine Art")
 URL <- "https://www.christies.com/Results?"
 
-GetFilterURL <- function(.items, .id_dict = id_dict, .url = URL){
+URLBuilder <- function(.items, .id_dict = id_dict, .url = URL){
 
   # 1 Match selected id with id dictionary
   id_sel <- .id_dict %>% filter(l2 %in% .items)
@@ -106,19 +106,21 @@ GetFilterURL <- function(.items, .id_dict = id_dict, .url = URL){
   URL_params <- groups %>%
     group_split() %>%
     set_names(group_keys(groups) %>% pull) %>%
-    map(~paste(.$id, collapse = "%7C"))
+    map_chr(~paste(.$id, collapse = "%7C")) %>%
+    enframe()
 
-  # 4 Bring the elements together
-  for(i in 1:length(URL_params)){
+  # 4 Concatenate first time
+  search_queries <- URL_params %>% unite(col = "query", sep = "=")
 
-    new_URL <- param_set(urls = .url,  key = names(URL_params)[i] , value = URL_params[[i]])
-
-  }
+  # 5 Build final URL
+  new_URL <- paste0(URL, paste(search_queries$query, collapse = "&"))
 
   return(new_URL)
 }
 
-GetFilterURL(.items = vec)
+URLBuilder(.items = vec1)
+URL_FILTERED <- URLBuilder(.items = vec1)
+
 ### Here, I construct the URLs. It contains a bit of hardcoding which is not
 ### optimal but serves the purpose
 
