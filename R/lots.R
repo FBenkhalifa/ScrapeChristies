@@ -17,8 +17,6 @@ lots_results <- lots_d %>% html_nodes("#LotListings") %>% html_nodes(xpath = "//
 lot_finder <- lots_d %>% html_nodes(xpath = "//a[@target = '_blank' and @class ='print--page']") %>% html_attr("href")
 
 
-lot_finder <- lots_d %>% html_nodes(xpath = "//@id") %>% html_text
-
 # Lots level --------------------------------------------------------------
 
 # Extract lot id to construct lot elements
@@ -46,7 +44,7 @@ read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".print--page") %>%
 read_html("https://www.christies.com/lotfinder/print_sale.aspx?saleid=28361&lid=1") %>%
   html_text
 
-
+https://www.christies.com/lotfinder/lot/a-pair-of-chinese-red-overlay-yellow-glass-5913075-details.aspx?from=salesummery&intobjectid=5913075&sid=32881f09-dada-4e0f-aad8-e03bc5c6a780
 
 # Get header of filter list -----------------------------------------------
 
