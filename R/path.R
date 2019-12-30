@@ -90,11 +90,15 @@ webElem <- myclient$findElements(using = "css selector", ".gsfi")
 myclient$click()
 
 
-
-
+# Observe the XHR request and see that this site is loaded
+id = 28316
+URL_xhr <- paste0("https://www.christies.com/AjaxPages/SaleLanding/DisplayLotList.aspx?intsaleid=", id)
 read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".filter--lots-wrapper--items") %>%
   html_nodes(xpath = "/div/a[@href]")
 
-read_html("https://www.christies.com/lotfinder/print_sale.aspx?saleid=28361&lid=1") %>%
-  html_nodes(".lot-description")
+table <- read_html("https://www.christies.com/lotfinder/print_sale.aspx?saleid=28361&lid=1") %>%
+  html_nodes(xpath = "//table[@id ='lot-list']") %>%
+  html_table
 
+URL_l2 <- read_html(URL_xhr) %>%
+  html_nodes(xpath = "//div[@class='image-preview-container']/a[@href]") %>% html_attr("href")
