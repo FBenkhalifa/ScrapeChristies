@@ -1,53 +1,23 @@
-library(httr)
-library(xml2)
-library(rvest)
-library(RSelenium)
-library(tidyverse)
-library(seleniumPipes)
-
-cursor$highlightElement()
-cursor$clickElement()
-myclient$close()
-rD$server$stop()
-
-# 1 Start connection
-rD <- rsDriver(verbose = FALSE, chromever = "79.0.3945.36" )
-myclient <- rD$client
-
-# 2 Navigate to Christies page
-myclient$navigate(URL_FILTERED)
-
-# 1 Start from the auction side and click on filter
-cursor <- myclient$findElement(using = "xpath", value = FILTER_BUTTON)
-cursor$clickElement()
-
-# 2 Get on category
-cursor <- myclient$findElement(using = "xpath", value = xpath_l1["Category"])
-cursor$highlightElement()
-cursor$clickElement()
-
-
-cursor <- myclient$findElement(using = "xpath", value = xpath_l2["Fine Art"])
-cursor$highlightElement()
-cursor$clickElement()
-
-cursor <- myclient$findElement(using = "xpath", value = "//*[@id=\"refine-results\"]/cc-filters/div[1]/ul/li[2]/cc-multi-select-box/div/div/div[2]/ul/li[5]/label")
-cursor$clickElement(using = "xpath", value = '"//*[@id=\"refine-results\"]/cc-filters/div[1]/ul/li[2]/cc-multi-select-box/div/div/div[2]/ul/li[5]/label')
-
-
 
 # Filter level ------------------------------------------------------------
 
 # Get lots names on lots page
-read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".image-description--title") %>% html_text(trim = TRUE)
-read_html(URL_FILTERED) %>% html_nodes(".image-description--title") %>% html_text(trim = TRUE)
-
+lots <- read_html(URL_FILTERED)
+lots_names <- lots %>% html_nodes(xpath = "//h6/a[@target ='_self']") %>% html_attr("href")
+lots_URLs <- lots %>%
+  html_nodes(xpath = "//h6/a[@target ='_self']") %>%
+  html_attr("href") %>%
+  paste0(URL, .)
 
 # Lot level ---------------------------------------------------------------
-
+lots_d <- read_html(lots_URLs[1])
 # Get summary on lot page
-read_html(myclient$getPageSource()[[1]]) %>% html_nodes("#rmjs-1") %>% html_text
+lots_summary <- lots_d %>% html_nodes("strong , em") %>% html_text
+lots_results <- lots_d %>% html_nodes("#LotListings") %>% html_nodes(xpath = "//a") %>% html_attr("href") # number 1
+lot_finder <- lots_d %>% html_nodes(xpath = "//a[@target = '_blank' and @class ='print--page']") %>% html_attr("href")
 
+
+lot_finder <- lots_d %>% html_nodes(xpath = "//@id") %>% html_text
 
 # Lots level --------------------------------------------------------------
 
@@ -66,7 +36,7 @@ read_html(myclient$getPageSource()[[1]]) %>%
 
 # Elements level ----------------------------------------------------------
 
-read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".lotDetails") %>% html_text(trim = TRUE)
+read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".lotDetails")  %>% html_text(trim = TRUE)
 
 
 # Overview level ----------------------------------------------------------

@@ -92,7 +92,7 @@ vec1 <- c(c("African, Oceanic & Pre-Columbian Art", "Antiquities", "Asian Art",
          c("June"),
          c( "2015"))
 vec2 <- c("Fine Art")
-URL <- "https://www.christies.com/Results?"
+URL <- "https://www.christies.com"
 
 URLBuilder <- function(.items, .id_dict = id_dict, .url = URL){
 
@@ -113,7 +113,7 @@ URLBuilder <- function(.items, .id_dict = id_dict, .url = URL){
   search_queries <- URL_params %>% unite(col = "query", sep = "=")
 
   # 5 Build final URL
-  new_URL <- paste0(URL, paste(search_queries$query, collapse = "&"))
+  new_URL <- paste0(paste0(URL, "/Results?"), paste(search_queries$query, collapse = "&"))
 
   return(new_URL)
 }

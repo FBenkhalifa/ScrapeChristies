@@ -13,6 +13,8 @@ BACK <- '//*[@id="refine-results"]/cc-filters/div[1]/ul/li[1]/cc-multi-select-bo
 # Set up client -----------------------------------------------------------
 cursor$highlightElement()
 cursor$clickElement()
+myclient$close()
+rD$server$stop()
 
 # 1 Start connection
 rD <- rsDriver(verbose = FALSE, chromever = "79.0.3945.36" )
@@ -143,8 +145,6 @@ lot_1 <- read_html(myclient$getPageSource()[[1]]) %>% html_nodes("#ResultContain
 html_lot <-
 
 
-myclient$close()
-rD$server$stop()
 
 lot <- "https://www.christies.com/property-from-descendants-of-28361.aspx?lid=1&dt=281220190340&saletitle="
 read_html(lot) %>% html_nodes("#rmjs-1")
