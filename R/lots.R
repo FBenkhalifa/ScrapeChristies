@@ -1,4 +1,11 @@
-
+library(RCurl)
+library(XML)
+library(stringr)
+library(rvest)
+library(magick)
+library(curl)
+library(httr)
+library(tidyverse)
 # Filter level ------------------------------------------------------------
 
 # Get lots names on lots page
@@ -60,6 +67,19 @@ US_prices <- lots_results %>%
 
 # Images ------------------------------------------------------------------
 URL_image <-  URL_summary %>% html_nodes("img") %>% html_attr("src")
+URL_image <-  URL_image %>% map_chr(~gsub("\\?.*", "", .))
+
+magick::image_read(URL_image[2])
+magick::image_read(URL_image[1])
+
+image_name <- URL_image
+paste0("jpgs/", basename(URL_image))
+if (!file.exists("jpgs/")) dir.create("jpgs/")
+
+jpg_path <- paste0("jpgs/",basename(jpg_url))
+purrr::walk2(.x = jpg_url,
+             .y = jpg_path,
+             .f = download.file)
 
 
 
