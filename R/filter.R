@@ -3,8 +3,6 @@ library(xml2)
 library(rvest)
 library(RSelenium)
 library(tidyverse)
-library(stringr)
-library(urltools)
 
 # Define static Variables
 URL_FILTER <- "https://www.christies.com/Results"
@@ -86,12 +84,6 @@ id_dict <- left_join(full_tbl, URL_l1, by = "l1")
 # Comment: It is not optimal that the URLs are hardcoded but it will save the
 # purpose for now
 
-vec1 <- c(c("African, Oceanic & Pre-Columbian Art", "Antiquities", "Asian Art",
-           "Books & Manuscripts", "Fine Art", "Furniture & Decorative Arts"),
-         c("Los Angeles", "Milan", "Mumbai", "New York", "Online"),
-         c("June"),
-         c( "2015"))
-vec2 <- c("Fine Art")
 URL <- "https://www.christies.com"
 
 URLBuilder <- function(.items, .id_dict = id_dict, .url = URL){
@@ -118,8 +110,17 @@ URLBuilder <- function(.items, .id_dict = id_dict, .url = URL){
   return(new_URL)
 }
 
+
+vec1 <- c(c("African, Oceanic & Pre-Columbian Art", "Antiquities", "Asian Art",
+            "Books & Manuscripts", "Fine Art", "Furniture & Decorative Arts"),
+          c("Los Angeles", "Milan", "Mumbai", "New York", "Online"),
+          c("June"),
+          c( "2015"))
+
+vec2 <- c("Fine Art")
+
 URLBuilder(.items = vec1)
-URL_FILTERED <- URLBuilder(.items = vec1)
+URL_FILTERED <- URLBuilder(.items = vec2)
 
 ### Here, I construct the URLs. It contains a bit of hardcoding which is not
 ### optimal but serves the purpose
