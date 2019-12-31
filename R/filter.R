@@ -12,7 +12,7 @@ BACK <- '//*[@id="refine-results"]/cc-filters/div[1]/ul/li[1]/cc-multi-select-bo
 # Set up client -----------------------------------------------------------
 cursor$highlightElement()
 cursor$clickElement()
-
+cursor$quit()
 # 1 Start connection
 rD <- rsDriver(verbose = FALSE, chromever = "79.0.3945.36" )
 myclient <- rD$client
@@ -119,8 +119,9 @@ vec1 <- c(c("African, Oceanic & Pre-Columbian Art", "Antiquities", "Asian Art",
 
 vec2 <- c("Fine Art")
 
-URLBuilder(.items = vec1)
-URL_FILTERED <- URLBuilder(.items = vec2)
+filter <- c("Jewellery, Watches & Handbags")
+
+URL_FILTERED <- URLBuilder(.items = filter)
 
 ### Here, I construct the URLs. It contains a bit of hardcoding which is not
 ### optimal but serves the purpose

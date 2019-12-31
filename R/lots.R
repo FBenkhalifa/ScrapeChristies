@@ -29,6 +29,7 @@ for (i in seq_along(auction_URLs)){
 
       # Lot level ---------------------------------------------------------------
   lots <- read_html(auction_URLs[i])
+  tryCatch(lots <- read_html(auction_URLs[i]), error = function(e) { skip_to_next <- TRUE})
 
   Sys.sleep(SLEEP)
 
@@ -101,19 +102,23 @@ for (i in seq_along(auction_URLs)){
   URL_image <-  lots_print %>% html_nodes("#lot-list img") %>% html_attr("src")
   URL_jpg <-  URL_image %>% map_chr(~gsub("\\?.*", "", .))
 
-  path_jpg <-   paste(paste0("jpgs/",
+  dir.create(path = paste0("./jpgs/", auction_name))
+  path_jpg <-   paste0(paste(paste0("./jpgs/",
                              auction_URLs[i] %>%
                                basename %>%
                                parse_character %>%
                                gsub("\\..*", "", .)),
-                      seq_along(URL_image), sep = "/Lot")
+                      seq_along(URL_image), sep = "/Lot"),
+                      ".jpg")
+
   walk2(.x = URL_jpg,
         .y = path_jpg,
         .f = download.file)
 
   table_path <- paste0("./meta_data/", auction_name, ".rdata")
   if (!file.exists(table_path)) save(lot_table, file = table_path)
-}
+
+  }
 
 
 
