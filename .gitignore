@@ -41,3 +41,5 @@ vignettes/*.pdf
 
 # Data files
 /data/
+/meta_data/
+/jpgs/

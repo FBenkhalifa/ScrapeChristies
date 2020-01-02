@@ -93,7 +93,7 @@ URL <- "https://www.christies.com"
 URLBuilder <- function(.items, .id_dict = id_dict, .url = URL){
 
   # 1 Match selected id with id dictionary
-  id_sel <- .id_dict %>% filter(l2 %in% .items)
+  id_sel <- .id_dict %>% filter(l2 %in% .items) %>% drop_na
 
   # 2 Split into level 1 groups
   groups <- id_sel %>% select(id_l1, id) %>% group_by(id_l1)

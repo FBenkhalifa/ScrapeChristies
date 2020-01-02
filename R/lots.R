@@ -12,21 +12,88 @@ SLEEP = 0.5
 # if (!file.exists("./meta_data/")) dir.create("./meta_data//")
 
 # Get lots names on lots page
-GetLotsURL <- function(.url_filtered, .sleep = 0.8){
-auction <- read_html(URL_FILTERED)
-auction_names <- auction %>% html_nodes(xpath = "//h6/a[@target ='_self']") %>% html_attr("href")
-auction_URLs <- auction %>%
-  html_nodes(xpath = "//h6/a[@target ='_self']") %>%
-  html_attr("href") %>%
-  paste0(URL, .)
-Sys.sleep(.sleep)
-return(auction_URLs)
+GetLotsURL <- function(.url_filtered, .url = URL, .sleep = 0.8){
+
+  auction <- read_html(.url_filtered)
+  auction_names <- auction %>% html_nodes(xpath = "//h6/a[@target ='_self']") %>% html_attr("href")
+  if(auction_names %>% is_empty){
+
+    auction_URLs <- NA
+
+  } else{
+
+  auction_URLs <- auction %>%
+    html_nodes(xpath = "//h6/a[@target ='_self']") %>%
+    html_attr("href") %>%
+    paste0(.url, .)
+  Sys.sleep(.sleep)
+
+  }
+
+  return(auction_URLs)
+
 }
 
-filter <- expand.grid("Jewellery, Watches & Handbags", items$Month, items$Year[2:5])
-URLBuilder
-GetLotsURL(URL_FILTERED)
+MetaTable <- function(.args = list(
+  lot =lot_number,
+  description = description,
+  period = period,
+  dimensions = dimensions[1:4],
+  estimate_min = est_range$estimate_min,
+  estimate_max = est_range$estimate_max,
+  dom_price = dom_price), .US_table = US_table){
+  out <- tryCatch(
+    {
+      # .args2 <- list(a = c(1,2), b = c(1,2))
+
+      do.call(tibble, .args)
+
+      # The return value of `readLines()` is the actual value
+      # that will be returned in case there is no condition
+      # (e.g. warning or error).
+      # You don't need to state the return value via `return()` as code
+      # in the "try" part is not wrapped insided a function (unlike that
+      # for the condition handlers for warnings and error below)
+    },
+    error=function(cond) {
+      message("Not the same number of elements in tbl")
+      message("Try another combination")
+
+      var_length <- map(.args, length) %>% unique %>% length
+
+      if(var_length == 2 & .args$lot %>% length > .args$dom_price %>% length){
+
+        lot_table <- left_join(.US_table, do.call(tibble, .args[names(.args) != "dom_price"]), by = "lot") %>% add_column(dom_price = NA)
+
+      }else{
+
+        lot_table <- character(0)
+
+      }
+      # Choose a return value in case of error
+      return(lot_table)
+
+    },
+    warning=function(cond) {
+      message("Data is matched based on US_price")
+      return(NULL)
+    },
+    finally={
+
+      message("Data is matched based on US_price")
+    }
+  )
+  return(out)
+}
+
+
+
+filter <- expand.grid("Jewellery, Watches & Handbags", items$Month, items$Year[2:5]) %>% as.matrix
+URL_FILTERED <- apply(filter, 1, URLBuilder)
+auction_URLs <- map(URL_FILTERED, GetLotsURL) %>% unlist %>% na.omit
+
 log_info <- list()
+progress_bar <- txtProgressBar(min = 0, max = length(auction_URLs), style = 3)
 
 for (i in seq_along(auction_URLs)){
 
@@ -38,7 +105,7 @@ for (i in seq_along(auction_URLs)){
       # Lot level ---------------------------------------------------------------
   lots <- read_html(auction_URLs[i])
 
-  Sys.sleep(SLEEP)
+  Sys.sleep(runif(1, 0.2, 1.2))
 
    # Get summary on lot page
   lots_summary <- lots %>% html_nodes("strong , em") %>% html_text
@@ -150,12 +217,19 @@ if(lot_table %>% is_empty){
                       seq_along(URL_image), sep = "/Lot"),
                       ".jpg")
 
-  walk2(.x = URL_jpg[1:2],
-        .y = path_jpg[1:2],
-        ~download.file(.x, .y, mode = "wb"))
+  # walk2(.x = URL_jpg[1:2],
+  #       .y = path_jpg[1:2],
+  #       ~download.file(.x, .y, mode = "wb"))
+  for(i in seq_along(URL_jpg)){
 
+    download.file(url = URL_jpg[i], path_jpg[i],  mode = "wb")
+    Sys.sleep(runif(1, 0.3, 2))
+
+  }
   table_path <- paste0("./meta_data/", auction_name, ".rdata")
   if (!file.exists(table_path)) save(lot_table, file = table_path)
+
+  setTxtProgressBar(progress_bar, i)
 
   }
 
