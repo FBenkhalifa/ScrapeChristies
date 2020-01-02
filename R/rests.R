@@ -321,3 +321,40 @@ read_html(myclient$getPageSource()[[1]]) %>% html_nodes(".filter--lots-wrapper--
 read_html("https://www.christies.com/lotfinder/print_sale.aspx?saleid=28361&lid=1") %>%
   html_nodes(".lot-description")
 
+
+
+
+lots_print_box <- lots_print %>%  html_nodes(xpath = "//table[@id ='lot-list']//tr")
+
+description <- lots_print_box %>% html_nodes(xpath = "//td[@class ='lot-info']//span[@class ='lot-description']") %>% html_text
+
+period <- lots_print_box %>% html_nodes(xpath = "//td[@class ='lot-info']//span[@class ='lot-maker']") %>% html_text
+
+estimate <- lots_print %>% html_nodes(xpath = "//td[@class ='estimate']//span[@class ='lot-description'][1]") %>% html_text
+estimate <- lots_print %>% html_nodes(xpath = "//td[@class ='estimate']//span[@class ='lot-description' or @][1]") %>% html_text
+
+price <- lots_print %>% html_nodes(xpath = "//td[@class ='estimate']//span[@class ='lot-description'][2]") %>% html_text
+
+est_range <- estimate %>%
+  str_split(., " - ") %>%
+  do.call(rbind, .) %>%
+  apply(., 2, parse_number) %>%
+  as_tibble %>%
+  set_names(c("estimate_min", "estimate_max"))
+
+dom_price <- lots_print %>% html_nodes(xpath = "//td[@class ='estimate']//span[@class ='lot-description'][2]") %>% html_text %>%
+  parse_number
+dom_price <- lots_print %>% html_nodes('.estimate .lot-description') %>% html_text %>%
+  parse_number
+
+dimensions <- lots_print %>% html_nodes(".medium-dimensions") %>% html_text
+
+auction <- lots_print %>% html_nodes(".browse-sale-title") %>% html_text(trim = TRUE)
+
+loc_time <- lots_print %>%
+  html_nodes(".sale-number-location1") %>%
+  html_text %>%
+  gsub("[\t\r\n]", "", .) %>%
+  str_split(., ",") %>% unlist %>%
+  map_chr(trimws) %>%
+  set_names(c("time", "loc"))
