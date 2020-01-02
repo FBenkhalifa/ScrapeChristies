@@ -6,6 +6,7 @@ library(magick)
 library(curl)
 library(httr)
 library(tidyverse)
+library(zip)
 # Filter level ------------------------------------------------------------
 SLEEP = 0.5
 # if (!file.exists("./jpgs/")) dir.create("./jpgs/")
@@ -94,9 +95,9 @@ auction_URLs <- map(URL_FILTERED, GetLotsURL) %>% unlist %>% na.omit
 
 log_info <- list()
 progress_bar <- txtProgressBar(min = 0, max = length(auction_URLs), style = 3)
-
+ # 12:length(auction_URLs)
 for (i in seq_along(auction_URLs)){
-
+  progress_bar <- txtProgressBar(min = 0, max = length(auction_URLs), style = 3)
   auction_name <- auction_URLs[i] %>%
     basename %>%
     parse_character %>%
@@ -193,7 +194,9 @@ for (i in seq_along(auction_URLs)){
     dom_price = dom_price
   )
 
-lot_table <- MetaTable(.args = args, .US_table = US_table)
+lot_table <- MetaTable(.args = args, .US_table = US_table) %>% add_column(time = loc_time["time"],
+                                                                          loc = loc_time["loc"],
+                                                                          auction = auction_name)
 
 if(lot_table %>% is_empty){
 
@@ -226,6 +229,12 @@ if(lot_table %>% is_empty){
     Sys.sleep(runif(1, 0.3, 2))
 
   }
+
+  # paths <- path_jpg %>% map(~gsub("^./", "", .)) %>% map_chr(~gsub("^jpgs", "", .))
+  # files_zip <- dir(directory)
+  # zip::zip(zipfile = directory, files = files_zip)
+  # setwd("../")
+  # zip::zipr(zipfile = auction_name, files = paths)
   table_path <- paste0("./meta_data/", auction_name, ".rdata")
   if (!file.exists(table_path)) save(lot_table, file = table_path)
 
@@ -233,4 +242,18 @@ if(lot_table %>% is_empty){
 
   }
 
+## Some files to zip up
+dir.create(tmp <- tempfile())
+cat("first file", file = file.path(tmp, "file1"))
+cat("second file", file = file.path(tmp, "file2"))
 
+zipfile <- tempfile(fileext = ".zip")
+zipr(zipfile, tmp)
+
+## List contents
+zip_list(zipfile)
+
+## Add another file
+cat("third file", file = file.path(tmp, "file3"))
+zipr_append(zipfile, file.path(tmp, "file3"))
+zip_list(zipfile)
