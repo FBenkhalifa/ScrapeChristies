@@ -1,18 +1,12 @@
-https://www.christies.com/lotfinder/print_sale.aspx?saleid=28183&lid=1
+# https://www.christies.com/lotfinder/print_sale.aspx?saleid=28183&lid=1
 
-urls <- c(
-  "http://stat.ethz.ch/R-manual/R-devel/library/base/html/connections.html",
-  "http://en.wikipedia.org/wiki/Xz",
-  "xxxxx"
-)
+
 MetaTable <- function(.args = list(
   lot =lot_number,
   description = description,
-  period = period,
-  dimensions = dimensions[1:4],
   estimate_min = est_range$estimate_min,
   estimate_max = est_range$estimate_max,
-  dom_price = dom_price), .US_table = US_table){
+  price = price), .res_table = res_table){
   out <- tryCatch(
     {
       # .args2 <- list(a = c(1,2), b = c(1,2))
@@ -30,11 +24,15 @@ MetaTable <- function(.args = list(
       message("Not the same number of elements in tbl")
       message("Try another combination")
 
-      var_length <- map(.args, length) %>% unique %>% length
+      # Check if the tibble could not be assembled because variables have different lengths
+      var_length <- map(.args[!(names(.args) %in% c("auction", "location", "time"))], length) %>% # Clearly auction, location and time differ from the length of the other vars which is why they are left out (have length 1)
+        unique %>%
+        length
 
-        if(var_length == 2 & .args$lot %>% length > .args$dom_price %>% length){
+      # Check if the difference comes from the price which is not recorded for every lot, which is often the case
+        if(var_length == 2 & .args$lot %>% length > .args$price %>% length){
 
-          lot_table <- left_join(.US_table, do.call(tibble, .args[names(.args) != "dom_price"]), by = "lot") %>% add_column(dom_price = NA)
+          lot_table <- left_join(.res_table, do.call(tibble, .args[names(.args) != "price"]), by = "lot")
 
         }else{
 

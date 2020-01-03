@@ -97,22 +97,26 @@ log_info <- list()
 progress_bar <- txtProgressBar(min = 0, max = length(auction_URLs), style = 3)
  # 12:length(auction_URLs)
 for (i in seq_along(auction_URLs)){
+
+  # 1 Set progress bar
   progress_bar <- txtProgressBar(min = 0, max = length(auction_URLs), style = 3)
+
+  # 2 Get auction name to identify the loop later
   auction_name <- auction_URLs[i] %>%
     basename %>%
     parse_character %>%
     gsub("\\..*", "", .)
 
-      # Lot level ---------------------------------------------------------------
+  # 3 Read the landing page of the lots
   lots <- read_html(auction_URLs[i])
 
+  # 4 Take a short break
   Sys.sleep(runif(1, 0.2, 1.2))
 
-   # Get summary on lot page
-  lots_summary <- lots %>% html_nodes("strong , em") %>% html_text
-
+  # 5 Get print URL
   URL_print <- lots %>% html_nodes(xpath = "//a[@target = '_blank' and @class ='print--page']") %>% html_attr("href")
 
+  # 6 Skip the lot in case there is no URL print on the page
   if(URL_print %>% is_empty){
 
     warning <- paste0("Auction #", i, ",", auction_name, " has no infos print document")
@@ -123,80 +127,36 @@ for (i in seq_along(auction_URLs)){
 
   }
 
+  # Get the URl for the result list where we get the
   URL_results <- lots %>% html_nodes("#LotListings") %>% html_nodes(xpath = "//a") %>% html_attr("href") %>% .[1]
 
 
 
   # Lots level --------------------------------------------------------------
 
-  lots_print <- read_html(URL_print)
-
-######
-
-  lots_print_box <- lots_print %>%  html_nodes(xpath = "//table[@id ='lot-list']//td[@class = 'lot-info']")
-
-  lot_number <- lots_print %>% html_nodes(".lot-number") %>% html_text %>% parse_number()
-
-  description <- lots_print %>% html_nodes(".lot-info .lot-description") %>% html_text
-
-  period <- lots_print %>% html_nodes(".lot-maker") %>% html_text
-
-  estimate <- lots_print %>% html_nodes(xpath = "//td[@class ='estimate']//span[@class ='lot-description'][1]") %>% html_text
-
-  est_range <- estimate %>%
-    str_split(., " - ") %>%
-    do.call(rbind, .) %>%
-    apply(., 2, parse_number) %>%
-    as_tibble %>%
-    set_names(c("estimate_min", "estimate_max"))
-
-  dom_price <- lots_print %>% html_nodes(xpath = "//td[@class ='estimate']//span[@class ='lot-description'][2]") %>% html_text %>%
-    parse_number
-
-    dimensions <- lots_print %>% html_nodes(".medium-dimensions") %>% html_text
-
-    auction <- lots_print %>% html_nodes(".browse-sale-title") %>% html_text(trim = TRUE)
-
-    loc_time <- lots_print %>%
-      html_nodes(".sale-number-location1") %>%
-      html_text %>%
-      gsub("[\t\r\n]", "", .) %>%
-      str_split(., ",") %>% unlist %>%
-      map_chr(trimws) %>%
-      set_names(c("time", "loc"))
-######
+  lot_data <- GetLotInfo(lots_print)
 
 
   # Results -----------------------------------------------------------------
 
   lots_results <- URL_results %>% read_html
-  US_prices <- lots_results %>%
+  res_prices <- lots_results %>%
     html_nodes(xpath = "//span[contains(@id, 'dlResults_lblPrice_')]") %>%
     html_text() %>%
     parse_number
 
-  US_prices_lots <- lots_results %>%
+  res_prices_lots <- lots_results %>%
     html_nodes(xpath = "//span[contains(@id, 'dlResults_lblLotNumber_')]") %>%
     html_text() %>%
     parse_number
 
-  US_table <- tibble(lot = US_prices_lots, US_prices = US_prices)
+  res_table <- tibble(lot = res_prices_lots, price = res_prices)
 
   # Table -------------------------------------------------------------------
 
-  args <- list(
-    lot =lot_number,
-    description = description,
-    period = period,
-    dimensions = dimensions,
-    estimate_min = est_range$estimate_min,
-    estimate_max = est_range$estimate_max,
-    dom_price = dom_price
-  )
+  args <- lot_data
 
-lot_table <- MetaTable(.args = args, .US_table = US_table) %>% add_column(time = loc_time["time"],
-                                                                          loc = loc_time["loc"],
-                                                                          auction = auction_name)
+lot_table <- MetaTable(.args = lot_data, .res_table = res_table)
 
 if(lot_table %>% is_empty){
 
@@ -242,18 +202,4 @@ if(lot_table %>% is_empty){
 
   }
 
-## Some files to zip up
-dir.create(tmp <- tempfile())
-cat("first file", file = file.path(tmp, "file1"))
-cat("second file", file = file.path(tmp, "file2"))
 
-zipfile <- tempfile(fileext = ".zip")
-zipr(zipfile, tmp)
-
-## List contents
-zip_list(zipfile)
-
-## Add another file
-cat("third file", file = file.path(tmp, "file3"))
-zipr_append(zipfile, file.path(tmp, "file3"))
-zip_list(zipfile)
