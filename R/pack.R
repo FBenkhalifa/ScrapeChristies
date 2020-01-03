@@ -1,5 +1,11 @@
+library(tidyverse)
+library(magrittr)
+library(janitor)
 
-file_names <- as.list(dir(pattern="stock_*"))
+
+# file loading ------------------------------------------------------------
+
+
 file_names <- paste0("./meta_data/", dir("./meta_data/"))
 
 out <-  lapply(file_names,function(x){
@@ -11,4 +17,34 @@ out <-  lapply(file_names,function(x){
   0 # succeeded
 } )
 obj <- file_names %>% map_chr(~(gsub(pattern = './meta_data/', '', .)))
-out <- obj %>% map(~get(.)) %>% do.call(rbind, .)
+
+obj_list <- map(obj, get) %>% map(~remove_empty(., which = "cols"))
+obj_list_re <- map(obj_list, ~plyr::rename(.,
+                                           replace = c(US_prices= "dom_price"),
+                                           warn_missing = FALSE))
+obj_list_normal <- obj_list_re %>%
+  map_lgl(., ~(ncol(.) > 7))
+
+binded <- obj_list_re[obj_list_normal] %>%
+  do.call(bind_rows, .) %>% select(-period, -dimensions)
+
+
+
+# Pic loading -------------------------------------------------------------
+
+pic_path <- list.files("./jpgs/", recursive = T) %>% enframe(name = NULL, value = "file") %>%
+  separate(.,
+           col = file,
+           into = c("auction", "lot"),
+           sep = "/Lot",
+           remove = FALSE) %>%
+  mutate_at("lot", parse_number)
+
+
+binded_full <- inner_join(pic_path, binded)
+
+
+
+
+
+
