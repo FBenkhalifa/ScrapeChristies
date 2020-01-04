@@ -26,7 +26,12 @@ obj_list_normal <- obj_list_re %>%
   map_lgl(., ~(ncol(.) > 7))
 
 binded <- obj_list_re[obj_list_normal] %>%
-  do.call(bind_rows, .) %>% select(-period, -dimensions)
+  do.call(bind_rows, .) %>% select(-period, -dimensions) %>% mutate(dom_price = case_when(
+    dom_price > estimate_max ~ 1,
+    dom_price > estimate_min & dom_price < estimate_max ~ 0,
+    dom_price < estimate_min ~ -1
+  )) %>%
+  mutate_at("dom_price", as.factor)
 
 
 
