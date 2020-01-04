@@ -6,13 +6,19 @@ library(tfdatasets)
 #   map_df(~floor_date(., 'month'))) %>%
 
 # Data Preprocessing ------------------------------------------------------
+binded <- obj_list_re[obj_list_normal] %>%
+  do.call(bind_rows, .) %>% select(-period, -dimensions) %>% mutate(dom_price = case_when(
+    dom_price > estimate_max ~ 1,
+    dom_price > estimate_min & dom_price < estimate_max ~ 0,
+    dom_price < estimate_min ~ -1
+  )) %>%
+  mutate_at("dom_price", as.factor) %>% drop_na
 
 meta_data <- binded %>% select(-description, -auction, -lot) %>%
   mutate(time = time %>%
            gsub("[-].*|^[0-9]", "", .)%>%
            trimws(.))  %>%
-  mutate_if(is.character, as.factor) %>%
-  drop_na()
+  mutate_if(is.character, as.factor)
 
 
 
@@ -43,72 +49,29 @@ y_meta_test  <- bake(rec_obj, new_data = meta_test) %>% select(dom_price)
 
 # II Build Keras Model ----------------------------------------------------
 
-# Building our Artificial Neural Network
-model_meta <- keras_model_sequential()
-
-model_meta %>%
-
-  # First hidden layer
-  layer_dense(
-    units              = 16,
-    kernel_initializer = "uniform",
-    activation         = "relu",
-    input_shape        = ncol(x_train_tbl)) %>%
-
-  # Dropout to prevent overfitting
-  layer_dropout(rate = 0.1) %>%
-
-  # Second hidden layer
-  layer_dense(
-    units              = 16,
-    kernel_initializer = "uniform",
-    activation         = "relu") %>%
-
-  # Dropout to prevent overfitting
-  layer_dropout(rate = 0.1) %>%
-
-  # Output layer
-  layer_dense(
-    units              = 1) %>%
-
-  # Compile ANN
-  compile(
-    optimizer = 'adam',
-    loss      = 'mse',
-    metrics   = c('mse')
-  )
-
-# Fit the keras model to the training data
-history <- fit(
-  object           = model_meta,
-  x                = as.matrix(x_train_tbl),
-  y                = y_train_vec,
-  batch_size       = 50,
-  epochs           = 35,
-  validation_split = 0.25
-)
 
 
-meta_input_al <- layer_input(shape = c(28), name = 'meta_input_al')
+
+meta_input_al <- layer_input(shape = c(28), name = 'meta_input_al', dtype = "float32")
 
 meta_out_al <- meta_input_al %>%
 
   # First hidden layer
   layer_dense(
-    units              = 8,
+    units              = 16,
     kernel_initializer = "uniform",
     activation         = "relu"
   ) %>%
 
   # Dropout to prevent overfitting
-  layer_dropout(rate = 0.1) %>%
+  # layer_dropout(rate = 0.1) %>%
 
   # Second hidden layer
   layer_dense(
-    units              = 16,
+    units              = 20,
     kernel_initializer = "uniform",
     activation         = "relu") %>%
-  layer_dropout(rate = 0.2) %>%
+  layer_dropout(rate = 0.1) %>%
   layer_dense(units = 3, activation = "softmax")
 
 model_al <- keras_model(
@@ -117,7 +80,7 @@ model_al <- keras_model(
 )
 
 model_al %>% compile(
-  optimizer =  "rmsprop",
+  optimizer =  "adam",
   loss      = 'categorical_crossentropy',
   metrics = c("accuracy")
 )
@@ -125,16 +88,39 @@ model_al %>% compile(
 
 
 # Fit the keras model to the training data
-history <- fit(
+history <- keras::fit(
   object           = model_al,
   x                = as.matrix(x_meta_train),
-  y                = pull(y_meta_train),
-  batch_size       = 50,
-  epochs           = 35,
-  validation_split = 0.25
+  y                = to_categorical(y_meta_train, num_classes = 3),
+  batch_size       = 40,
+  epochs           = 100,
+  validation_split = 0.2
 )
 
 print(history)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 c_meta_train <- bake(rec_obj, new_data = meta_train)
 spec3 <- feature_spec(c_meta_train, x = c("estimate_min", "estimate_max")) %>%

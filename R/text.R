@@ -43,6 +43,77 @@ y_text_test  <- text_test %>% select(dom_price)
 
 # II Build Keras Model ----------------------------------------------------
 
+# 1 Define the input layer for text recognition
+text_input <- layer_input(
+  shape = c(18),
+  dtype = 'int32',
+  name  = 'text_input')
+
+# 2 Define the embedding layer
+gru_out <- text_input %>%
+
+  layer_embedding(
+    input_dim    = 10000,
+    output_dim   = 16,
+    input_length = 18
+  ) %>%
+  # layer_global_average_pooling_1d() %>%
+
+  layer_lstm(
+    units             = 16,
+    dropout           = 0.5,
+    recurrent_dropout = 0.5
+  ) %>%
+  layer_dense(units = 8, activation = "relu") %>%
+  layer_dropout(0.5) %>%
+  layer_dense(units = 3, activation = "softmax")
+
+
+model_text <- keras_model(text_input, gru_out)
+
+model_text %>% compile(
+  optimizer =  "adam",
+  loss      = 'categorical_crossentropy',
+  metrics = c("accuracy")
+)
+
+history_text <- model_text %>% fit(
+  x                = as.matrix(x_text_train),
+  y                = to_categorical(y_text_train, num_classes = 3),
+  epochs = 40,
+  batch_size = 100,
+  validation_split = 0.2,
+  verbose=2
+)
+
+
+
+
+# Fit the keras model to the training data
+history <- keras::fit(
+  object           = model_al,
+  x                = as.matrix(x_text_train),
+  y                = to_categorical(y_text_train, num_classes = 3),
+  batch_size       = 100,
+  epochs           = 100,
+  validation_split = 0.25
+)
+
+
+
+
+##
+
+
+
+
+
+
+
+
+
+
+
 
 # 1 Define the input layer for text recognition
 text_input <- layer_input(

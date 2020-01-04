@@ -29,8 +29,8 @@ train_generator <- flow_images_from_dataframe(
 
 # 2 Check if function works
 batch <- generator_next(train_generator)
-batch %>% str
-
+batch %>% class
+plot(as.raster(batch[[1]][4,,,]))
 
 # II Build keras model ----------------------------------------------------
 
