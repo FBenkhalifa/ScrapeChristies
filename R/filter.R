@@ -483,7 +483,8 @@ data <- obj[obj_normal]%>%
 data <- data %>%
   mutate(time = time %>%
            gsub("[-].*|^[0-9]", "", .)%>%
-           trimws(.))
+           trimws(.)) %>%
+  mutate_at(c("time", "loc", "auction"), as.factor)
 
 
 # V Preprocessing --------------------------------------------------------------
@@ -503,12 +504,13 @@ rec_obj <- recipes::recipe(dom_price ~. , data = data_train) %>%
   step_normalize(estimate_min, estimate_max) %>%
   step_dummy( time, loc) %>%
   step_dummy(all_outcomes(), one_hot = TRUE) %>%
-  prep(data = data_train)
+  prep(data = data_train, strings_as_factors = FALSE)
 
 # 10 Bake with the recipe
 data_train <- bake(rec_obj, new_data = data_train)# %>% select(-dom_price)
 data_test <- bake(rec_obj, new_data = data_test)
 
+data %>% select(description) %>% select_if(is.character, as.factor) %>% map(~is.na(.) %>% any(.))
 
 #---- B Preprocess the data for meta analysis----
 
@@ -528,25 +530,34 @@ y_meta_test  <- data_test %>% select(starts_with("dom_price"))
 MAX_WORDS <- 10000
 
 # 1 Load the lot descriptions
-text_raw <- data_train$description
+train_text_raw <- data_train$description
 
 # 2 Convert texts into token
 tokenizer <- text_tokenizer(num_words = MAX_WORDS) %>%
-  fit_text_tokenizer(text_raw)
-text_sequence <- texts_to_sequences(tokenizer, text_raw)
+  fit_text_tokenizer(train_text_raw)
+train_text_sequence <- texts_to_sequences(tokenizer, train_text_raw)
 
 # 3 Get maximal length of text
-text_max <- text_sequence %>% map_dbl(length) %>% max
+text_max <- train_text_raw %>% map_dbl(length) %>% max
 
 # 4 Check what the indices are
 index <- tokenizer$word_index
 
 # 5 Build tensors for processing
-x_text_train <- pad_sequences(sequences = text_sequence, maxlen = text_max) %>%
+x_text_train <- pad_sequences(sequences = train_text_sequence, maxlen = text_max) %>%
   as_tibble
 
 y_text_train <- y_meta_train
 
+# 6 Reüeat the same for the test set
+test_text_raw <- data_test$description
+
+test_text_sequence <- texts_to_sequences(tokenizer, test_text_raw)
+
+x_text_test <- pad_sequences(sequences = test_text_sequence, maxlen = text_max) %>%
+  as_tibble
+
+y_text_test <- y_meta_test
 
 
 #---- D Preprocess images by constructing generator functions -----
