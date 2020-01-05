@@ -89,7 +89,11 @@ MetaTable <- function(.args = list(
 
 
 
-filter <- expand.grid("Jewellery, Watches & Handbags", items$Month, items$Year[2:5]) %>% as.matrix
+filter <- expand.grid("Jewellery, Watches & Handbags", items$Month, items$Year[2:5])
+var4 <- c("Amsterdam", "Beaune", "Dubai", "Geneva", "Hong Kong", "London",
+  "Los Angeles", "Milan", "Mumbai", "New York", "Rome", "Shanghai", "Zürich")
+for (i in var4) filter <- filter %>% add_column(!!i := rep(i, nrow(filter)))
+
 URL_FILTERED <- apply(filter, 1, URLBuilder)
 auction_URLs <- map(URL_FILTERED, GetLotsURL) %>% unlist %>% na.omit
 
@@ -164,6 +168,7 @@ if(lot_table %>% is_empty){
   next
 
 }
+if(FALSE){
   # Images ------------------------------------------------------------------
   URL_image <-  lots_print %>% html_nodes("#lot-list img") %>% html_attr("src")
   URL_jpg <-  URL_image %>% map_chr(~gsub("\\?.*", "", .))
@@ -197,7 +202,7 @@ if(lot_table %>% is_empty){
   # zip::zipr(zipfile = auction_name, files = paths)
   table_path <- paste0("./meta_data/", auction_name, ".rdata")
   if (!file.exists(table_path)) save(lot_table, file = table_path)
-
+}
   setTxtProgressBar(progress_bar, i)
 
   }
