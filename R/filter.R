@@ -4,6 +4,11 @@ library(rvest)
 library(RSelenium)
 library(tidyverse)
 library(robotstxt)
+library(lubridate)
+library(plotly)
+library(recipes)
+library(rsample)
+library(keras)
 
 # I Check disallowed files -------------------------------------------------------
 
@@ -28,7 +33,7 @@ myclient <- rD$client
 myclient$navigate(URL_FILTER)
 
 
-# A Extract filter in RSelenium Session ----------------------------------------------------------
+#---- A Extract filter in RSelenium Session ----
 
 # 1 Start from the auction side and click on filter
 cursor <- myclient$findElement(using = "xpath", value = FILTER_BUTTON)
@@ -51,7 +56,7 @@ rm(rD)
 gc()
 
 
-# B Structure the information to create filter dictionary ----------------
+#---- B Structure the information to create filter dictionary ----
 
 # 1 Extract available options
 items <- text_box %>%
@@ -89,7 +94,7 @@ full_tbl <- left_join(items_tbl, id_tbl, key = "l2")
 full_tbl %>% filter(id %>% is.na)
 
 
-# C Construct URLs resulting from the filter --------------------------------
+#---- C Construct URLs resulting from the filter ----
 
 # 1 Hardcode the URLs which result from specifying level 1 in the filter
 URL_l1 <- c(Location = "locations",
@@ -143,7 +148,7 @@ URLBuilder(.items = filter_vec) # Copy to browser to check of it works
 
 
 
-# II Scrape the data ------------------------------------------------------------
+# III Scrape the data ------------------------------------------------------------
 
 # A Set up the directory
 if (!dir.exists("./jpgs/")) dir.create("./jpgs/")
@@ -266,11 +271,10 @@ MetaTable <- function(.args = list(
 }
 
 
-log_info <- list()
 
 
 
-# D Run the loop ----------------------------------------------------------
+#---- D Run the loop ----
 
 
 
@@ -298,7 +302,7 @@ for (i in seq_along(auction_URLs)){
   if(URL_print %>% is_empty){
 
     warning <- paste0("Auction # ", i, ",", auction_name, " has no infos for print document")
-    log_info[[auction_name]][["Print Document"]] <- "No infos for print document"
+    log_info[[auction_name]][["Print Document"]] <- "No print document"
     print(warning)
 
     next
@@ -377,7 +381,7 @@ for (i in seq_along(auction_URLs)){
   # 1 Skip the loop and write to if no lot table could be constructed
   if(lot_table %>% is_empty){
 
-    log_info[[auction_name]][["Lot table"]] <- paste0("No matches for metadata possible in ", auction_name)
+    log_info[[auction_name]][["Lot table"]] <- paste0("No metadata could be constructed")
     next
 
   }
@@ -432,3 +436,281 @@ for (i in seq_along(auction_URLs)){
 
 
 
+
+# IV Load files  ------------------------------------------------------------
+
+meta_paths <- paste0("./meta_data/", dir("./meta_data/"))
+
+out <-  map(meta_paths,function(x){
+
+  # 1 Load environment for the files
+  env = new.env()
+
+  # 2 Load object in environment
+  nm = load(x, envir = env)[1]
+
+  # 3 Create object name which is simply the auction name
+  objname = gsub(pattern = './meta_data/', replacement = '', x = x, fixed = T)
+
+  # 4 Assign the auction name to the rdata
+  assign(objname, env[[nm]], envir = .GlobalEnv)
+
+} )
+obj_names <- meta_paths %>%
+  map_chr(~(gsub(pattern = './meta_data/', '', .)))
+obj <- obj_names %>%
+  map(., get) %>%
+  map(~remove_empty(., which = "cols")) %>%
+  map(., ~plyr::rename(.,
+                              replace = c(US_prices= "dom_price"),
+                              warn_missing = FALSE))
+
+rm(list = obj_names)
+
+obj_normal <- obj %>% map_lgl(., ~(ncol(.) > 7))
+data <- obj[obj_normal]%>%
+  do.call(bind_rows, .) %>%
+  select(-period, -dimensions) %>%
+  mutate(dom_price = case_when(
+    dom_price > estimate_max ~ 2,
+    dom_price > estimate_min & dom_price < estimate_max ~ 1,
+    dom_price < estimate_min ~ 0
+  ) %>% as.factor(.)) %>%
+  drop_na
+# meta_data %>% drop_na
+
+# Seperate time and location
+data <- data %>%
+  mutate(time = time %>%
+           gsub("[-].*|^[0-9]", "", .)%>%
+           trimws(.))
+
+
+# V Preprocessing --------------------------------------------------------------
+
+#---- A Preprocess the data ----
+
+# 1 Split into training and validation set
+sample_split <- initial_split(data, prop = 0.75)
+
+# 8 Retrieve testings
+data_train <- training(sample_split)
+data_test  <- testing(sample_split)
+
+# B Preprocess for metat
+# 9 Prepare preprocessing
+rec_obj <- recipes::recipe(dom_price ~. , data = data_train) %>%
+  step_normalize(estimate_min, estimate_max) %>%
+  step_dummy( time, loc) %>%
+  step_dummy(all_outcomes(), one_hot = TRUE) %>%
+  prep(data = data_train)
+
+# 10 Bake with the recipe
+data_train <- bake(rec_obj, new_data = data_train)# %>% select(-dom_price)
+data_test <- bake(rec_obj, new_data = data_test)
+
+
+#---- B Preprocess the data for meta analysis----
+
+# 1 Select predictors of interest for
+x_meta_train <- data_train %>% select( -description, -auction, -lot,
+                                      -starts_with("dom_price"))
+x_meta_test <- data_test %>% select( -description, -auction, -lot,
+                                     -starts_with("dom_price"))
+
+# 2 Store the true values
+y_meta_train <- data_train %>% select(starts_with("dom_price"))
+y_meta_test  <- data_test %>% select(starts_with("dom_price"))
+
+
+#---- C Preprocess text by tokenization -----
+
+MAX_WORDS <- 10000
+
+# 1 Load the lot descriptions
+text_raw <- data_train$description
+
+# 2 Convert texts into token
+tokenizer <- text_tokenizer(num_words = MAX_WORDS) %>%
+  fit_text_tokenizer(text_raw)
+text_sequence <- texts_to_sequences(tokenizer, text_raw)
+
+# 3 Get maximal length of text
+text_max <- text_sequence %>% map_dbl(length) %>% max
+
+# 4 Check what the indices are
+index <- tokenizer$word_index
+
+# 5 Build tensors for processing
+x_text_train <- pad_sequences(sequences = text_sequence, maxlen = text_max) %>%
+  as_tibble
+
+y_text_train <- y_meta_train
+
+
+
+#---- D Preprocess images by constructing generator functions -----
+
+# 1 Get all img which could be downloaded
+img_path <- paste0("./jpgs/", list.files("./jpgs/", recursive = T)) %>% enframe(name = NULL, value = "file") %>%
+  separate(.,
+           col = file,
+           into = c("auction", "lot"),
+           sep = "/Lot",
+           remove = FALSE) %>%
+  mutate_at("lot", parse_number) %>%
+  mutate_at("auction", ~gsub("./jpgs/", "", .)) %>%
+  arrange(auction, lot)
+
+# 2 Join together with the metadata
+x_img_train <- inner_join(img_path, data_train) %>% select(file, starts_with("dom_price"))
+
+# 3 Define data generator functions for train and vlai
+train_gen <- image_data_generator(rescale = 1/255, validation_split = 0.2)
+
+# 4 Generate train batches which will be loaded into the ram to decrease the RAM usage
+train_generator <- flow_images_from_dataframe(
+  dataframe = x_img_train,
+  x_col = "file",
+  y_col = x_img_train %>% select(starts_with("dom_price")) %>% names(),
+  generator = train_gen,
+  batch_size = 32,
+  class_mode = "other",
+  subset = "training",
+  target_size = c(150, 150),
+)
+
+# 5 Generate validation batches
+validation_generator <- flow_images_from_dataframe(
+  dataframe = x_img_train,
+  x_col = "file",
+  y_col = x_img_train %>% select(starts_with("dom_price")) %>% names(),
+  generator = train_gen,
+  batch_size = 32,
+  class_mode = "other",
+  subset = "validation",
+  target_size = c(150, 150),
+)
+
+# 6 Check if function works
+batch <- generator_next(train_generator)
+batch %>% str
+plot(as.raster(batch[[1]][1,,,]))
+
+
+
+
+# VI Modelling
+#---- A Model multi-input ----
+# II Build Keras Model ----------------------------------------------------
+
+model_build <- function(){
+  # 1 Define the input layer for text recognition
+  text_input <- layer_input(
+    shape = c(18),
+    dtype = 'int32',
+    name  = 'text_input')
+
+
+  # TEXT OUT ---------------------------------------------------------------------
+
+
+  gru_out <- text_input %>%
+
+    layer_embedding(
+      input_dim    = 10000,
+      output_dim   = 16,
+      input_length = 18
+    ) %>%
+
+    layer_lstm(
+      units             = 12,
+      dropout           = 0.5,
+      recurrent_dropout = 0.5
+    ) %>%
+    layer_dense(units = 8, activation = "relu")
+
+
+  # TEXT OUTPUT ------------------------------------------------------------------
+
+
+
+  # text_output <- gru_out %>%
+  #   layer_dropout(0.5) %>%
+  #   layer_dense(
+  #     units = 3,
+  #     activation = "softmax",
+  #     name  = 'text_output'
+  #   )
+
+
+
+  # META OUT ----------------------------------------------------------------
+
+
+  meta_input <- layer_input(shape = c(28), name = 'meta_input', dtype = "float32")
+
+  meta_out <- meta_input %>%
+
+    # First hidden layer
+    layer_dense(
+      units              = 20,
+      kernel_initializer = "uniform",
+      activation         = "relu"
+    ) #%>%
+
+  # # Dropout to prevent overfitting
+  # layer_dropout(rate = 0.4) %>%
+  #
+  # # Second hidden layer
+  # layer_dense(
+  #   units              = 20,
+  #   kernel_initializer = "uniform",
+  #   activation         = "relu")
+
+
+
+  # META OUTPUT -------------------------------------------------------------
+
+
+  # meta_output <- meta_out %>%
+  #   layer_dropout(rate = 0.1) %>%
+  #   layer_dense(units = 3, activation = "softmax")
+
+
+  main_output <- layer_concatenate(c(gru_out, meta_out)) %>%
+    # layer_dense(units = 20, activation = 'relu') %>%
+    # layer_dropout(rate = 0.5) %>%
+    layer_dense(units = 10, activation = 'relu') %>%
+    layer_dropout(rate = 0.5) %>%
+    layer_dense(units = 3, activation = "softmax", name = "main_output")
+
+
+  model <- keras_model(
+    inputs = c(text_input, meta_input),
+    outputs = c(main_output)
+  )
+
+
+  # Compile ANN
+  model %>% compile(
+    optimizer = 'adam',
+    loss      = 'categorical_crossentropy',
+    metrics = c("accuracy")
+  )
+
+  # And trained it via:
+  history <- model %>% fit(
+    x = list(text_input = as.matrix(x_text_train), meta_input = as.matrix(x_meta_train)),
+    y = list(main_output = to_categorical(y_text_train, num_classes = 3)), #text_output = to_categorical(y_text_train, num_classes = 3)),
+    epochs = 40,
+    batch_size = 100,
+    validation_split = 0.3
+  )
+
+}
+
+model_build()
+
+model %>% save_model_hdf5("cats_and_dogs_small_1.h5")
+#---- B model img ----
