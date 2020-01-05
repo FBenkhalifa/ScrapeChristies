@@ -160,9 +160,6 @@ for (i in locations) filter_opt <- filter_opt %>% add_column(!!i := rep(i, nrow(
 URL_filter_opt <- apply(filter, 1, URLBuilder) # These pages display the auctions with the corresponding filtered auctins
                                                # Note that the page architecture demands for every month in every year a unique URL
 
-# 3 Get URls for level 2
-auction_URLs <- map(URL_FILTERED, GetLotsURL) %>% unlist %>% na.omit
-
 
 #---- C Get information from Level 2 as described in the paper ----
 # Here two functions are defined which will be used in the loop which finally scrapes the data
@@ -204,6 +201,9 @@ GetLotsURL <- function(.url_filtered, .sleep = 0.8){
 
 }
 
+# 3 Get URls for level 2
+auction_URLs <- map(URL_FILTERED, GetLotsURL) %>% unlist %>% na.omit
+
 
 # 2 Create function which is able to scrape the relevant information on level 4
 
@@ -221,11 +221,9 @@ GetLotsURL <- function(.url_filtered, .sleep = 0.8){
 MetaTable <- function(.args = list(
   lot =lot_number,
   description = description,
-  period = period,
-  dimensions = dimensions[1:4],
   estimate_min = est_range$estimate_min,
   estimate_max = est_range$estimate_max,
-  dom_price = dom_price), .res_table = res_table){
+  price = price), .res_table = res_table){
 
   out <- tryCatch(
 
@@ -240,10 +238,10 @@ MetaTable <- function(.args = list(
 
       # 2 Check if the cause of the error is the price having differing length from the rest
       var_length <- map(.args, length) %>% unique %>% length
-      if(var_length == 2 & .args$lot %>% length > .args$dom_price %>% length){
+      if(var_length == 2 & .args$lot %>% length > .args$price %>% length){
 
         # 3 If true join with lot results list by lot number
-        lot_table <- left_join(.res_table, do.call(tibble, .args[names(.args) != "dom_price"]), by = "lot") %>% add_column(dom_price = NA)
+        lot_table <- inner_join(.res_table, do.call(tibble, .args[names(.args) != "price"]), by = "lot") #%>% add_column(dom_price = NA)
 
       }else{
 
@@ -256,12 +254,12 @@ MetaTable <- function(.args = list(
 
     },
     warning=function(cond) {
-      message("Data is matched based on US_price")
+      message("Data is matched based on result table")
       return(NULL)
     },
     finally={
 
-      message("Data is matched based on US_price")
+      message("Data is matched based on result table")
     }
   )
   return(out)
@@ -272,101 +270,10 @@ log_info <- list()
 
 
 
+# D Run the loop ----------------------------------------------------------
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Get lots names on lots page
-GetLotsURL <- function(.url_filtered, .url = URL, .sleep = 0.8){
-
-  auction <- read_html(.url_filtered)
-  auction_names <- auction %>% html_nodes(xpath = "//h6/a[@target ='_self']") %>% html_attr("href")
-  if(auction_names %>% is_empty){
-
-    auction_URLs <- NA
-
-  } else{
-
-    auction_URLs <- auction %>%
-      html_nodes(xpath = "//h6/a[@target ='_self']") %>%
-      html_attr("href") %>%
-      paste0(.url, .)
-    Sys.sleep(.sleep)
-
-  }
-
-  return(auction_URLs)
-
-}
-
-MetaTable <- function(.args = list(
-  lot =lot_number,
-  description = description,
-  period = period,
-  dimensions = dimensions[1:4],
-  estimate_min = est_range$estimate_min,
-  estimate_max = est_range$estimate_max,
-  dom_price = dom_price), .US_table = US_table){
-  out <- tryCatch(
-    {
-      # .args2 <- list(a = c(1,2), b = c(1,2))
-
-      do.call(tibble, .args)
-
-      # The return value of `readLines()` is the actual value
-      # that will be returned in case there is no condition
-      # (e.g. warning or error).
-      # You don't need to state the return value via `return()` as code
-      # in the "try" part is not wrapped insided a function (unlike that
-      # for the condition handlers for warnings and error below)
-    },
-    error=function(cond) {
-      message("Not the same number of elements in tbl")
-      message("Try another combination")
-
-      var_length <- map(.args, length) %>% unique %>% length
-
-      if(var_length == 2 & .args$lot %>% length > .args$dom_price %>% length){
-
-        lot_table <- left_join(.US_table, do.call(tibble, .args[names(.args) != "dom_price"]), by = "lot") %>% add_column(dom_price = NA)
-
-      }else{
-
-        lot_table <- character(0)
-
-      }
-      # Choose a return value in case of error
-      return(lot_table)
-
-    },
-    warning=function(cond) {
-      message("Data is matched based on US_price")
-      return(NULL)
-    },
-    finally={
-
-      message("Data is matched based on US_price")
-    }
-  )
-  return(out)
-}
-
-
-
-
-# 12:length(auction_URLs)
 for (i in seq_along(auction_URLs)){
 
   # 1 Set progress bar
@@ -387,11 +294,11 @@ for (i in seq_along(auction_URLs)){
   # 5 Get print URL
   URL_print <- lots %>% html_nodes(xpath = "//a[@target = '_blank' and @class ='print--page']") %>% html_attr("href")
 
-  # 6 Skip the lot in case there is no URL print on the page
+  # 6 Skip the lot in case there is no URL print on the page as e.g. here: https://www.christies.com/Christies-Jewels-Online-28172.aspx?lid=1&dt=050120201047
   if(URL_print %>% is_empty){
 
-    warning <- paste0("Auction #", i, ",", auction_name, " has no infos print document")
-    log_info[length(log_info)+1] <- c(auction_name, warning)
+    warning <- paste0("Auction # ", i, ",", auction_name, " has no infos for print document")
+    log_info[[auction_name]][["Print Document"]] <- "No infos for print document"
     print(warning)
 
     next
@@ -403,47 +310,97 @@ for (i in seq_along(auction_URLs)){
 
 
 
-  # Lots level --------------------------------------------------------------
+  #---- b. Lots level/Print lot list -----
 
-  lot_data <- GetLotInfo(lots_print)
+  lots_print <- read_html(URL_print)
 
+  # 1 Get the number of the lot
+  lot_number <- lots_print %>% html_nodes(".lot-number") %>% html_text %>% parse_number()
 
-  # Results -----------------------------------------------------------------
+  # 2 Get the text description of the lot
+  description <- lots_print %>% html_nodes(".lot-info .lot-description") %>% html_text
+
+  # 4 Get the estimated range of the lot
+  estimate <- lots_print %>% html_nodes(xpath = "//td[@class ='estimate']//span[@class ='lot-description'][1]") %>% html_text
+  est_range <- estimate %>%
+    str_split(., " - ") %>%
+    do.call(rbind, .) %>%
+    apply(., 2, parse_number) %>%
+    as_tibble %>%
+    set_names(c("estimate_min", "estimate_max"))
+
+  # 5 Get the price of the lot
+  price <- lots_print %>% html_nodes(xpath = "//td[@class ='estimate']//span[@class ='lot-description'][2]") %>% html_text %>%
+    parse_number
+
+  # 6 Get the auction name
+  auction <- lots_print %>% html_nodes(".browse-sale-title") %>% html_text(trim = TRUE)
+
+  # 7 Get date and time
+  loc_time <- lots_print %>%
+    html_nodes(".sale-number-location1") %>%
+    html_text %>%
+    gsub("[\t\r\n]", "", .) %>%
+    str_split(., ",") %>% unlist %>%
+    map_chr(trimws) %>%
+    set_names(c("time", "loc"))
+
+  #---- c. Lots level/Result list -----
 
   lots_results <- URL_results %>% read_html
+
+  # 1 Get the prices from result list
   res_prices <- lots_results %>%
     html_nodes(xpath = "//span[contains(@id, 'dlResults_lblPrice_')]") %>%
     html_text() %>%
     parse_number
 
+  # 2 Get the lot number
   res_prices_lots <- lots_results %>%
     html_nodes(xpath = "//span[contains(@id, 'dlResults_lblLotNumber_')]") %>%
     html_text() %>%
     parse_number
 
+  # 3 Merge lot number with corresponding price
   res_table <- tibble(lot = res_prices_lots, price = res_prices)
 
-  # Table -------------------------------------------------------------------
+  #---- d. Construct the final lot table -----
+  lot_table <- MetaTable(.args = list(
+    lot =lot_number,
+    description = description,
+    estimate_min = est_range$estimate_min,
+    estimate_max = est_range$estimate_max,
+    price = price),
+    .res_table = res_table) %>%
+    drop_na
 
-  args <- lot_data
-
-  lot_table <- MetaTable(.args = lot_data, .res_table = res_table)
-
+  # 1 Skip the loop and write to if no lot table could be constructed
   if(lot_table %>% is_empty){
 
-    log_info[i] <- paste0("No matches for metadata possible in ", auction_name)
+    log_info[[auction_name]][["Lot table"]] <- paste0("No matches for metadata possible in ", auction_name)
     next
 
   }
+
+  # 2 Save the rdata file to the corresponding directory
+  table_path <- paste0("./meta_data/", auction_name, ".rdata")
+  if (!file.exists(table_path)) save(lot_table, file = table_path)
   if(FALSE){
-    # Images ------------------------------------------------------------------
+    #------ d. Download images ------
+
+    # 1 Get the URL to the jpg
     URL_image <-  lots_print %>% html_nodes("#lot-list img") %>% html_attr("src")
+
+    # 2 Clean the URL
     URL_jpg <-  URL_image %>% map_chr(~gsub("\\?.*", "", .))
 
+    # 3 Create directory path to save the files in
     directory <- paste0("./jpgs/", auction_name)
 
+    # 4 Check if directory exists and if not, create one
     if(!dir.exists(paths = directory)) dir.create(path = directory)
 
+    # 5 Construct the jpg paths
     path_jpg <-   paste0(paste(paste0("./jpgs/",
                                       auction_URLs[i] %>%
                                         basename %>%
@@ -452,25 +409,22 @@ for (i in seq_along(auction_URLs)){
                                seq_along(URL_image), sep = "/Lot"),
                          ".jpg")
 
-    # walk2(.x = URL_jpg[1:2],
-    #       .y = path_jpg[1:2],
-    #       ~download.file(.x, .y, mode = "wb"))
-    for(i in seq_along(URL_jpg)){
+    # 6 Loop over the paths and download jpgs
+    for(j in seq_along(URL_jpg)){
 
-      download.file(url = URL_jpg[i], path_jpg[i],  mode = "wb")
-      Sys.sleep(runif(1, 0.3, 2))
+      # 1 Check if file exists and skip download if TRUE
+      if(!file.exists(path_jpg[j])){
+
+        # 2 Download
+        download.file(url = URL_jpg[j], path_jpg[j],  mode = "wb")
+
+        # § Give server time to chill
+        Sys.sleep(runif(1, 0.3, 2))
+      }
 
     }
 
-    # paths <- path_jpg %>% map(~gsub("^./", "", .)) %>% map_chr(~gsub("^jpgs", "", .))
-    # files_zip <- dir(directory)
-    # zip::zip(zipfile = directory, files = files_zip)
-    # setwd("../")
-    # zip::zipr(zipfile = auction_name, files = paths)
-    table_path <- paste0("./meta_data/", auction_name, ".rdata")
-    if (!file.exists(table_path)) save(lot_table, file = table_path)
   }
-  setTxtProgressBar(progress_bar, i)
 
 }
 
