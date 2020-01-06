@@ -26,7 +26,7 @@ FILTER_BUTTON <- '//*[@id="refine-results"]/cc-filters/h4[2]' # Xpath to the lot
 # II Get filter options -----------------------------------------------------------
 
 # 1 Start connection
-rD <- rsDriver(verbose = FALSE, chromever = "79.0.3945.36" ) # For me only chrome version 79.0.3945.36 worked, I had to download it
+rD <- rsDriver(verbose = FALSE, chromever = "79.0.3945.36" ) # For me only chrome version 79.0.3945.88 worked, I had to download it
 myclient <- rD$client
 
 # 2 Navigate to Christies page
@@ -159,7 +159,8 @@ if (!dir.exists("./meta_data/")) dir.create("./meta_data//")
 # 1 Restrict search to Jewellry watches & Handbags from the last 4 years in New York and LA
 filter_opt <- expand.grid("Jewellery, Watches & Handbags", items$Month, items$Year[2:5]) %>% as_tibble
 locations <- c("Los Angeles", "New York")
-for (i in locations) filter_opt <- filter_opt %>% add_column(!!i := rep(i, nrow(filter)))
+for (i in locations)filter_opt <- filter_opt %>% add_column(!!i := rep(i, nrow(filter_opt)))
+
 
 # 2 Get URls for level 1
 URL_filter_opt <- apply(filter, 1, URLBuilder) # These pages display the auctions with the corresponding filtered auctins
@@ -176,7 +177,7 @@ URL_filter_opt <- apply(filter, 1, URLBuilder) # These pages display the auction
 # .url_filtered: A string with the URL of the filtered results
 # .sleep: A double specifying how long to wait after each call of the function
 
-GetLotsURL <- function(.url_filtered, .sleep = 0.8){
+GetLotsURL <- function(.url_filtered, .sleep = 0.8, .url = URL){
 
   # 1 Read the html of the filtered results
   auction <- read_html(.url_filtered)
@@ -207,7 +208,7 @@ GetLotsURL <- function(.url_filtered, .sleep = 0.8){
 }
 
 # 3 Get URls for level 2
-auction_URLs <- map(URL_FILTERED, GetLotsURL) %>% unlist %>% na.omit
+auction_URLs <- map(URL_filter_opt, GetLotsURL) %>% unlist %>% na.omit
 
 
 # 2 Create function which is able to scrape the relevant information on level 4
@@ -375,8 +376,10 @@ for (i in seq_along(auction_URLs)){
     estimate_min = est_range$estimate_min,
     estimate_max = est_range$estimate_max,
     price = price),
-    .res_table = res_table) %>%
-    drop_na
+    .res_table = res_table)
+
+  lot_table <- lot_table %>% add_column(auction = auction_name, loc = loc_time["loc"], time =  loc_time["time"]) %>%
+  drop_na
 
   # 1 Skip the loop and write to if no lot table could be constructed
   if(lot_table %>% is_empty){
@@ -538,14 +541,13 @@ tokenizer <- text_tokenizer(num_words = MAX_WORDS) %>%
 train_text_sequence <- texts_to_sequences(tokenizer, train_text_raw)
 
 # 3 Get maximal length of text
-text_max <- train_text_raw %>% map_dbl(length) %>% max
+text_max <- train_text_sequence %>% map_dbl(length) %>% max
 
 # 4 Check what the indices are
 index <- tokenizer$word_index
 
 # 5 Build tensors for processing
-x_text_train <- pad_sequences(sequences = train_text_sequence, maxlen = text_max) %>%
-  as_tibble
+x_text_train <- pad_sequences(sequences = train_text_sequence, maxlen = text_max)
 
 y_text_train <- y_meta_train
 
@@ -578,12 +580,13 @@ x_img_train <- inner_join(img_path, data_train) %>% select(file, starts_with("do
 
 # 3 Define data generator functions for train and vlai
 train_gen <- image_data_generator(rescale = 1/255, validation_split = 0.2)
-
+y_cols <- x_img_train %>% select(starts_with("dom_price")) %>% names()
 # 4 Generate train batches which will be loaded into the ram to decrease the RAM usage
 train_generator <- flow_images_from_dataframe(
+  directory = "/Users/flo_b/OneDrive/Desktop/ScrapeChristies/",
   dataframe = x_img_train,
   x_col = "file",
-  y_col = x_img_train %>% select(starts_with("dom_price")) %>% names(),
+  y_col = y_cols,
   generator = train_gen,
   batch_size = 32,
   class_mode = "other",
@@ -593,9 +596,10 @@ train_generator <- flow_images_from_dataframe(
 
 # 5 Generate validation batches
 validation_generator <- flow_images_from_dataframe(
+  directory = "/Users/flo_b/OneDrive/Desktop/ScrapeChristies/",
   dataframe = x_img_train,
   x_col = "file",
-  y_col = x_img_train %>% select(starts_with("dom_price")) %>% names(),
+  y_col = y_cols,
   generator = train_gen,
   batch_size = 32,
   class_mode = "other",
@@ -618,7 +622,7 @@ plot(as.raster(batch[[1]][1,,,]))
 model_build <- function(){
   # 1 Define the input layer for text recognition
   text_input <- layer_input(
-    shape = c(18),
+    shape = ncol(x_text_train),
     dtype = 'int32',
     name  = 'text_input')
 
@@ -659,7 +663,7 @@ model_build <- function(){
   # META OUT ----------------------------------------------------------------
 
 
-  meta_input <- layer_input(shape = c(28), name = 'meta_input', dtype = "float32")
+  meta_input <- layer_input(shape = ncol(x_meta_train), name = 'meta_input', dtype = "float32")
 
   meta_out <- meta_input %>%
 
@@ -697,23 +701,23 @@ model_build <- function(){
     layer_dense(units = 3, activation = "softmax", name = "main_output")
 
 
-  model <- keras_model(
+  multi_model <- keras_model(
     inputs = c(text_input, meta_input),
     outputs = c(main_output)
   )
 
 
   # Compile ANN
-  model %>% compile(
+  multi_model %>% compile(
     optimizer = 'adam',
     loss      = 'categorical_crossentropy',
     metrics = c("accuracy")
   )
 
   # And trained it via:
-  history <- model %>% fit(
+  multi_history <- multi_model %>% fit(
     x = list(text_input = as.matrix(x_text_train), meta_input = as.matrix(x_meta_train)),
-    y = list(main_output = to_categorical(y_text_train, num_classes = 3)), #text_output = to_categorical(y_text_train, num_classes = 3)),
+    y = list(main_output = as.matrix(y_text_train)), #text_output = to_categorical(y_text_train, num_classes = 3)),
     epochs = 40,
     batch_size = 100,
     validation_split = 0.3
@@ -725,3 +729,32 @@ model_build()
 
 model %>% save_model_hdf5("cats_and_dogs_small_1.h5")
 #---- B model img ----
+
+
+img_model <- keras_model_sequential() %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu",
+                input_shape = c(150, 150, 3)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 50, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_flatten() %>%
+  layer_dense(units = 20, activation = "relu") %>%
+  layer_dense(units = 3, activation = "softmax")
+
+img_model %>% compile(
+  optimizer =  "adam",
+  loss      = 'categorical_crossentropy',
+  metrics = c("accuracy")
+)
+
+img_history <- img_model %>% fit_generator(
+  train_generator,
+  steps_per_epoch = 30,
+  epochs = 20,
+  validation_data = validation_generator,
+  validation_steps = 13
+)
+
+img_model %>% save_model_hdf5(filepath = "./img_reg_2.h5")
