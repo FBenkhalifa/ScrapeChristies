@@ -9,12 +9,29 @@ library(plotly)
 library(recipes)
 library(rsample)
 library(keras)
+library(reticulate)
+library(tensorflow)
+library(plotly)
+
 load("./data.rdata")
+### Caution!!! For keras to work, anaconda for python must be installed on the computer
+install_keras(method = "conda") # If this does not work, anaconda for python must be installed first. In the error in the console there is a link to python
+conda_create("ScrapeChristies")
+use_condaenv(condaenv = "ScrapeChristies", required = TRUE)
+reticulate::conda_install("pandas", envname = "ScrapeChristies")
+reticulate::conda_install("pillow", envname = "ScrapeChristies", pip = TRUE)
+tensorflow::install_tensorflow(envname = "ScrapeChristies")
+conda_list()
+py_config()
+import("pillow")
+py_module_available("pandas")
+py_module_available("tensorflow")
+py_module_available("pillow")
 
 # I Check disallowed files -------------------------------------------------------
 
 robotstxt("https://www.christies.com/") %>%
-.$permissions %>%
+  .$permissions %>%
   as_tibble %>%
   filter(field == "Disallow" & useragent == "*") %>%
   select(value)
@@ -27,7 +44,7 @@ FILTER_BUTTON <- '//*[@id="refine-results"]/cc-filters/h4[2]' # Xpath to the lot
 # II Get filter options -----------------------------------------------------------
 
 # 1 Start connection
-rD <- rsDriver(verbose = FALSE, chromever = "79.0.3945.36" ) # For me only chrome version 79.0.3945.88 worked, I had to download it
+rD <- rsDriver(verbose = FALSE, chromever = "79.0.3945.36" ) # For me only chrome version 79.0.3945.36 worked, I had to download it
 myclient <- rD$client
 
 # 2 Navigate to Christies page
@@ -150,22 +167,23 @@ URLBuilder(.items = filter_vec) # Copy to browser to check of it works
 
 
 # III Scrape the data ------------------------------------------------------------
-
 # A Set up the directory
 if (!dir.exists("./jpgs/")) dir.create("./jpgs/")
 if (!dir.exists("./meta_data/")) dir.create("./meta_data//")
 
 #---- B Get information from Level 1 as described in the paper ----
+# 1 Use this for a smaller dataset although the following specification were used
+filter_opt <- expand.grid("Jewellery, Watches & Handbags", items$Month, items$Year[2:5])
 
 # 1 Restrict search to Jewellry watches & Handbags from the last 4 years in New York and LA
-filter_opt <- expand.grid("Jewellery, Watches & Handbags", items$Month, items$Year[2:5]) %>% as_tibble
-locations <- c("Los Angeles", "New York")
-for (i in locations)filter_opt <- filter_opt %>% add_column(!!i := rep(i, nrow(filter_opt)))
+# filter_opt <- expand.grid("Jewellery, Watches & Handbags", items$Month, items$Year[2:11]) %>% as_tibble
+# locations <- c("Los Angeles", "New York")
+# for (i in locations) filter_opt <- filter_opt %>% add_column(!!i := rep(i, nrow(filter_opt)))
 
 
 # 2 Get URls for level 1
-URL_filter_opt <- apply(filter, 1, URLBuilder) # These pages display the auctions with the corresponding filtered auctins
-                                               # Note that the page architecture demands for every month in every year a unique URL
+URL_filter_opt <- apply(filter_opt, 1, URLBuilder) # These pages display the auctions with the corresponding filtered auctins
+# Note that the page architecture demands for every month in every year a unique URL
 
 
 #---- C Get information from Level 2 as described in the paper ----
@@ -278,12 +296,10 @@ MetaTable <- function(.args = list(
 
 #---- D Run the loop ----
 
+log_info <- list()
 
+for (i in seq_along(auction_URLs[1:45])){
 
-for (i in seq_along(auction_URLs)){
-
-  # 1 Set progress bar
-  progress_bar <- txtProgressBar(min = 0, max = length(auction_URLs), style = 3)
 
   # 2 Get auction name to identify the loop later
   auction_name <- auction_URLs[i] %>%
@@ -295,7 +311,7 @@ for (i in seq_along(auction_URLs)){
   lots <- read_html(auction_URLs[i])
 
   # 4 Take a short break
-  Sys.sleep(runif(1, 0.2, 1.2))
+  Sys.sleep(runif(1, 0.5, 2))
 
   # 5 Get print URL
   URL_print <- lots %>% html_nodes(xpath = "//a[@target = '_blank' and @class ='print--page']") %>% html_attr("href")
@@ -315,11 +331,10 @@ for (i in seq_along(auction_URLs)){
   URL_results <- lots %>% html_nodes("#LotListings") %>% html_nodes(xpath = "//a") %>% html_attr("href") %>% .[1]
 
 
-
   #---- b. Lots level/Print lot list -----
 
   lots_print <- read_html(URL_print)
-
+  Sys.sleep(runif(1, 0.5, 2))
   # 1 Get the number of the lot
   lot_number <- lots_print %>% html_nodes(".lot-number") %>% html_text %>% parse_number()
 
@@ -332,17 +347,14 @@ for (i in seq_along(auction_URLs)){
     str_split(., " - ") %>%
     do.call(rbind, .) %>%
     apply(., 2, parse_number) %>%
-    as_tibble %>%OO
+    as_tibble %>%
     set_names(c("estimate_min", "estimate_max"))
 
   # 5 Get the price of the lot
   price <- lots_print %>% html_nodes(xpath = "//td[@class ='estimate']//span[@class ='lot-description'][2]") %>% html_text %>%
     parse_number
 
-  # 6 Get the auction name
-  auction <- lots_print %>% html_nodes(".browse-sale-title") %>% html_text(trim = TRUE)
-
-  # 7 Get date and time
+  # 6 Get date and time
   loc_time <- lots_print %>%
     html_nodes(".sale-number-location1") %>%
     html_text %>%
@@ -377,10 +389,8 @@ for (i in seq_along(auction_URLs)){
     estimate_min = est_range$estimate_min,
     estimate_max = est_range$estimate_max,
     price = price),
-    .res_table = res_table)
-
-  lot_table <- lot_table %>% add_column(auction = auction_name, loc = loc_time["loc"], time =  loc_time["time"]) %>%
-  drop_na
+    .res_table = res_table) %>%
+    drop_na
 
   # 1 Skip the loop and write to if no lot table could be constructed
   if(lot_table %>% is_empty){
@@ -389,7 +399,8 @@ for (i in seq_along(auction_URLs)){
     next
 
   }
-
+  lot_table <- lot_table %>% add_column(auction = auction_name, loc = loc_time["loc"], time =  loc_time["time"]) %>%
+    drop_na
   # 2 Save the rdata file to the corresponding directory
   table_path <- paste0("./meta_data/", auction_name, ".rdata")
   if (!file.exists(table_path)) save(lot_table, file = table_path)
@@ -408,17 +419,17 @@ for (i in seq_along(auction_URLs)){
     # 4 Check if directory exists and if not, create one
     if(!dir.exists(paths = directory)) dir.create(path = directory)
 
-    # 5 Construct the jpg paths
+    # 5 Construct the jpg paths but only for those lots which are existent in the lot_table
     path_jpg <-   paste0(paste(paste0("./jpgs/",
                                       auction_URLs[i] %>%
                                         basename %>%
                                         parse_character %>%
                                         gsub("\\..*", "", .)),
-                               seq_along(URL_image), sep = "/Lot"),
+                               lot_table$lot, sep = "/Lot"),
                          ".jpg")
 
     # 6 Loop over the paths and download jpgs
-    for(j in seq_along(URL_jpg)){
+    for(j in lot_table$lot){
 
       # 1 Check if file exists and skip download if TRUE
       if(!file.exists(path_jpg[j])){
@@ -427,7 +438,7 @@ for (i in seq_along(auction_URLs)){
         download.file(url = URL_jpg[j], path_jpg[j],  mode = "wb")
 
         # § Give server time to chill
-        Sys.sleep(runif(1, 0.3, 2))
+        Sys.sleep(runif(1, 1, 4))
       }
 
     }
@@ -435,10 +446,7 @@ for (i in seq_along(auction_URLs)){
   }
 
 }
-
-
-
-
+log_info
 
 
 # IV Load files  ------------------------------------------------------------
@@ -463,33 +471,23 @@ out <-  map(meta_paths,function(x){
 obj_names <- meta_paths %>%
   map_chr(~(gsub(pattern = './meta_data/', '', .)))
 obj <- obj_names %>%
-  map(., get) %>%
-  map(~remove_empty(., which = "cols")) %>%
-  map(., ~plyr::rename(.,
-                              replace = c(US_prices= "dom_price"),
-                              warn_missing = FALSE))
+  map(., get)
 
 rm(list = obj_names)
 
-obj_normal <- obj %>% map_lgl(., ~(ncol(.) > 7))
+obj_normal <- obj %>% map_lgl(., ~(ncol(.) == 8))
 data <- obj[obj_normal]%>%
   do.call(bind_rows, .) %>%
-  select(-period, -dimensions) %>%
-  mutate(dom_price = case_when(
-    dom_price > estimate_max ~ 2,
-    dom_price > estimate_min & dom_price < estimate_max ~ 1,
-    dom_price < estimate_min ~ 0
-  ) %>% as.factor(.)) %>%
-  drop_na
-# meta_data %>% drop_na
-
-# Seperate time and location
-data <- data %>%
+  mutate(rating = case_when(
+    price > estimate_max ~ 2,
+    price > estimate_min & price < estimate_max ~ 1,
+    price < estimate_min ~ 0
+  )) %>%
   mutate(time = time %>%
-           gsub("[-].*|^[0-9]", "", .)%>%
+           gsub("[-].*|^[0-9][0-9]|^[0-9]", "", .)%>%
            trimws(.)) %>%
-  mutate_at(c("time", "loc", "auction"), as.factor)
-
+  mutate_at(vars( rating, loc, time), as.factor) %>%
+  drop_na
 
 # V Preprocessing --------------------------------------------------------------
 
@@ -504,30 +502,26 @@ data_test  <- testing(sample_split)
 
 # B Preprocess for metat
 # 9 Prepare preprocessing
-rec_obj <- recipes::recipe(dom_price ~. , data = data_train) %>%
-  step_normalize(estimate_min, estimate_max) %>%
-  step_dummy( time, loc) %>%
-  step_dummy(all_outcomes(), one_hot = TRUE) %>%
+rec_obj <- recipes::recipe(rating ~. , data = data_train) %>%
+  step_normalize(estimate_min, estimate_max, price) %>%
+  step_dummy(time, loc, all_outcomes(), one_hot = TRUE) %>% # If an error occurs make sure that loc has more than one factor
   prep(data = data_train, strings_as_factors = FALSE)
 
 # 10 Bake with the recipe
-data_train <- bake(rec_obj, new_data = data_train)# %>% select(-dom_price)
+data_train <- bake(rec_obj, new_data = data_train)
 data_test <- bake(rec_obj, new_data = data_test)
-
-data %>% select(description) %>% select_if(is.character, as.factor) %>% map(~is.na(.) %>% any(.))
 
 #---- B Preprocess the data for meta analysis----
 
-# 1 Select predictors of interest for
-x_meta_train <- data_train %>% select( -description, -auction, -lot,
-                                      -starts_with("dom_price"))
+# 1 Select predictors of interest for meta analysis
+x_meta_train <- data_train %>% select( -description, -auction, -lot, -price,
+                                       -starts_with("rating"))
 x_meta_test <- data_test %>% select( -description, -auction, -lot,
-                                     -starts_with("dom_price"))
+                                     -starts_with("rating"))
 
 # 2 Store the true values
-y_meta_train <- data_train %>% select(starts_with("dom_price"))
-y_meta_test  <- data_test %>% select(starts_with("dom_price"))
-
+y_meta_train <- data_train %>% select(starts_with("rating"))
+y_meta_test  <- data_test %>% select(starts_with("rating"))
 
 #---- C Preprocess text by tokenization -----
 
@@ -577,14 +571,15 @@ img_path <- paste0("./jpgs/", list.files("./jpgs/", recursive = T)) %>% enframe(
   arrange(auction, lot)
 
 # 2 Join together with the metadata
-x_img_train <- inner_join(img_path, data_train) %>% select(file, starts_with("dom_price"))
+x_img_train <- inner_join(img_path, data_train) %>% select(file, starts_with("rating"))
 
 # 3 Define data generator functions for train and vlai
 train_gen <- image_data_generator(rescale = 1/255, validation_split = 0.2)
-y_cols <- x_img_train %>% select(starts_with("dom_price")) %>% names()
+y_cols <- x_img_train %>% select(starts_with("rating")) %>% names()
+
 # 4 Generate train batches which will be loaded into the ram to decrease the RAM usage
 train_generator <- flow_images_from_dataframe(
-  directory = "/Users/flo_b/OneDrive/Desktop/ScrapeChristies/",
+  # directory = "C:/Users/user/Documents/GitHub/ScrapeChristies",
   dataframe = x_img_train,
   x_col = "file",
   y_col = y_cols,
@@ -597,7 +592,7 @@ train_generator <- flow_images_from_dataframe(
 
 # 5 Generate validation batches
 validation_generator <- flow_images_from_dataframe(
-  directory = "/Users/flo_b/OneDrive/Desktop/ScrapeChristies/",
+  # directory = "/Users/flo_b/OneDrive/Desktop/ScrapeChristies/",
   dataframe = x_img_train,
   x_col = "file",
   y_col = y_cols,
@@ -610,7 +605,6 @@ validation_generator <- flow_images_from_dataframe(
 
 # 6 Check if function works
 batch <- generator_next(train_generator)
-batch %>% str
 plot(as.raster(batch[[1]][1,,,]))
 
 
@@ -631,33 +625,22 @@ model_build <- function(){
   # TEXT OUT ---------------------------------------------------------------------
 
 
-  gru_out <- text_input %>%
+  lstm_out <- text_input %>%
 
     layer_embedding(
       input_dim    = 10000,
-      output_dim   = 16,
-      input_length = 18
+      output_dim   = 18,
+      input_length = ncol(x_text_train)
     ) %>%
 
     layer_lstm(
-      units             = 12,
+      units             = 18,
       dropout           = 0.5,
       recurrent_dropout = 0.5
     ) %>%
-    layer_dense(units = 8, activation = "relu")
-
-
-  # TEXT OUTPUT ------------------------------------------------------------------
-
-
-
-  # text_output <- gru_out %>%
-  #   layer_dropout(0.5) %>%
-  #   layer_dense(
-  #     units = 3,
-  #     activation = "softmax",
-  #     name  = 'text_output'
-  #   )
+    layer_dense(units = 16, activation = "relu") %>%
+    layer_dropout(rate = 0.3) %>%
+    layer_dense(units = 16, activation = "relu")
 
 
 
@@ -670,35 +653,30 @@ model_build <- function(){
 
     # First hidden layer
     layer_dense(
-      units              = 20,
+      units              = 16,
       kernel_initializer = "uniform",
       activation         = "relu"
-    ) #%>%
+    ) %>%
 
-  # # Dropout to prevent overfitting
-  # layer_dropout(rate = 0.4) %>%
-  #
-  # # Second hidden layer
-  # layer_dense(
-  #   units              = 20,
-  #   kernel_initializer = "uniform",
-  #   activation         = "relu")
+  # Dropout to prevent overfitting
+  layer_dropout(rate = 0.4) %>%
+
+  # Second hidden layer
+  layer_dense(
+    units              = 10,
+    kernel_initializer = "uniform",
+    activation         = "relu")
 
 
 
   # META OUTPUT -------------------------------------------------------------
 
 
-  # meta_output <- meta_out %>%
-  #   layer_dropout(rate = 0.1) %>%
-  #   layer_dense(units = 3, activation = "softmax")
-
-
-  main_output <- layer_concatenate(c(gru_out, meta_out)) %>%
-    # layer_dense(units = 20, activation = 'relu') %>%
-    # layer_dropout(rate = 0.5) %>%
+  main_output <- layer_concatenate(c(lstm_out, meta_out)) %>%
     layer_dense(units = 10, activation = 'relu') %>%
-    layer_dropout(rate = 0.5) %>%
+    layer_dropout(rate = 0.4) %>%
+    layer_dense(units = 5, activation = 'relu') %>%
+    layer_dropout(rate = 0.4) %>%
     layer_dense(units = 3, activation = "softmax", name = "main_output")
 
 
@@ -721,27 +699,25 @@ model_build <- function(){
     y = list(main_output = as.matrix(y_text_train)), #text_output = to_categorical(y_text_train, num_classes = 3)),
     epochs = 40,
     batch_size = 100,
-    validation_split = 0.3
+    validation_split = 0.25
   )
 
 }
 
 model_build()
 
-model %>% save_model_hdf5("cats_and_dogs_small_1.h5")
+multi_model %>% save_model_hdf5("./model/multi_epochs_8.h5")
 #---- B model img ----
 
 
 img_model <- keras_model_sequential() %>%
-  layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu",
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu",
                 input_shape = c(150, 150, 3)) %>%
-  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
-  layer_conv_2d(filters = 50, kernel_size = c(3, 3), activation = "relu") %>%
   layer_max_pooling_2d(pool_size = c(2, 2)) %>%
   layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu") %>%
   layer_max_pooling_2d(pool_size = c(2, 2)) %>%
   layer_flatten() %>%
-  layer_dense(units = 20, activation = "relu") %>%
+  layer_dense(units = 64, activation = "relu") %>%
   layer_dense(units = 3, activation = "softmax")
 
 img_model %>% compile(
@@ -753,9 +729,43 @@ img_model %>% compile(
 img_history <- img_model %>% fit_generator(
   train_generator,
   steps_per_epoch = 30,
-  epochs = 20,
+  epochs = 30,
   validation_data = validation_generator,
   validation_steps = 13
 )
 
-img_model %>% save_model_hdf5(filepath = "./img_reg_2.h5")
+# III Prediction -------
+# IV Plots ------
+# ---- B Plot some
+
+# 1 Restrict data to plot only on NY since there are many observation and they are all in USD
+plot_data <- data %>% filter(loc == "New York")
+
+# 2 Prepare for plotting
+melt_data <- plot_data %>% select(price, estimate_min, estimate_max) %>% gather
+
+# 3 Plot densplot
+dens_plot <- ggplot(melt_data, aes(x=value, fill=key)) + geom_density(alpha=0.25)+
+  xlim(c(0, 400000))+
+  theme_bw()
+
+# 4 Render as JS for interactivity
+dens_plot %>% ggplotly
+
+# 5 Plot Boxplot
+box_plot <- ggplot(melt_data, aes(x = key, y = value, fill = key)) + geom_boxplot() +
+  ylim(c(0, 200000)) +
+  theme_bw()
+box_plot %>% ggplotly
+
+hist_plot <- ggplot(melt_data, aes(x = value, fill = key)) + geom_histogram(alpha =  0.8)+
+  xlim(c(0, 400000))+
+  theme_bw()
+hist_plot %>% ggplotly
+
+# Check how Christies over and underrates
+hist_plot <- ggplot(data, aes(x = rating)) + geom_histogram(alpha =  0.8, stat = "count")+
+  theme_bw()
+hist_plot %>% ggplotly
+
+
