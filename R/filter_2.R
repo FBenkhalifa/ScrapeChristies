@@ -12,7 +12,8 @@ library(keras)
 library(reticulate)
 library(tensorflow)
 library(plotly)
-library(yardstick)
+library(caret)
+library(stargazer)
 
 load("./data.rdata")
 ### Caution!!! For keras to work, anaconda for python must be installed on the computer
@@ -780,13 +781,17 @@ estimates_tbl <- predict_class(.weight = 0.2, y_text_test[sample_test, ])
 # 1 Get confusion matrix
 metrics <- confusionMatrix(estimates_tbl$class_mixed, reference = estimates_tbl$truth)
 
-metrics$table
-metrics$byClass
+metrics$table %>%
+  as_tibble %>%
+  spread(., key = "Reference", value = n) %>%
+  stargazer(summary = FALSE, rownames = FALSE)
+
+metrics$byClass %>% t %>%
+  stargazer(summary = FALSE)
 
 
-
-# IV Plots ------
-# ---- B Plot some
+# IV Plots -----------------------------------------------------------------
+# ---- B Plot some summary statistics
 
 # 1 Restrict data to plot only on NY since there are many observation and they are all in USD
 plot_data <- data %>% filter(loc == "New York")
@@ -803,19 +808,15 @@ dens_plot <- ggplot(melt_data, aes(x=value, fill=key)) + geom_density(alpha=0.25
 dens_plot %>% ggplotly
 
 # 5 Plot Boxplot
-box_plot <- ggplot(melt_data, aes(x = key, y = value, fill = key)) + geom_boxplot() +
+box_plot <- ggplot(melt_data, aes(x = key, y = value, fill = key)) + geom_boxplot(alpha =  0.5) +
   ylim(c(0, 200000)) +
   theme_bw()
 box_plot %>% ggplotly
 
-hist_plot <- ggplot(melt_data, aes(x = value, fill = key)) + geom_histogram(alpha =  0.8)+
-  xlim(c(0, 400000))+
-  theme_bw()
-hist_plot %>% ggplotly
-
+# 6 Change order of levels to get anther order of hist as well
+data$rating <- factor(data$rating, levels = c("underrated", "correct", "overrated"))
 # Check how Christies over and underrates
-hist_plot <- ggplot(data, aes(x = rating)) + geom_histogram(alpha =  0.8, stat = "count")+
+hist_plot <- ggplot(data, aes(x = rating, fill = rating)) + geom_histogram(alpha = 0.5, stat = "count")+
   theme_bw()
 hist_plot %>% ggplotly
-
 
