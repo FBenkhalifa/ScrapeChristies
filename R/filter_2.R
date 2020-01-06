@@ -516,7 +516,7 @@ data_test <- bake(rec_obj, new_data = data_test)
 # 1 Select predictors of interest for meta analysis
 x_meta_train <- data_train %>% select( -description, -auction, -lot, -price,
                                        -starts_with("rating"))
-x_meta_test <- data_test %>% select( -description, -auction, -lot,
+x_meta_test <- data_test %>% select( -description, -auction, -lot, -price,
                                      -starts_with("rating"))
 
 # 2 Store the true values
@@ -571,7 +571,12 @@ img_path <- paste0("./jpgs/", list.files("./jpgs/", recursive = T)) %>% enframe(
   arrange(auction, lot)
 
 # 2 Join together with the metadata
+sample_train <- runif(600, 1, nrow(x_img_train))
+sample_test <- runif(120, 1, nrow(x_img_train))
 x_img_train <- inner_join(img_path, data_train) %>% select(file, starts_with("rating"))
+x_img_train <- x_img_train[runif(600, 1, nrow(x_img_train)), ] # Shorten the list because otherwise it takes hours to fit
+x_img_test <- inner_join(img_path, data_test) %>% select(file, starts_with("rating"))
+x_img_test <- x_img_train[runif(120, 1, nrow(x_img_train)), ]
 
 # 3 Define data generator functions for train and vlai
 train_gen <- image_data_generator(rescale = 1/255, validation_split = 0.2)
@@ -603,6 +608,18 @@ validation_generator <- flow_images_from_dataframe(
   target_size = c(150, 150),
 )
 
+# 6 Generate test batches
+test_datagen <- image_data_generator(rescale = 1/255)
+test_generator <- flow_images_from_dataframe(
+  # directory = "/Users/flo_b/OneDrive/Desktop/ScrapeChristies/",
+  dataframe = x_img_test,
+  x_col = "file",
+  y_col = y_cols,
+  generator = test_datagen,
+  batch_size = 32,
+  class_mode = "other",
+  target_size = c(150, 150),
+)
 # 6 Check if function works
 batch <- generator_next(train_generator)
 plot(as.raster(batch[[1]][1,,,]))
@@ -697,7 +714,7 @@ model_build <- function(){
   multi_history <- multi_model %>% fit(
     x = list(text_input = as.matrix(x_text_train), meta_input = as.matrix(x_meta_train)),
     y = list(main_output = as.matrix(y_text_train)), #text_output = to_categorical(y_text_train, num_classes = 3)),
-    epochs = 40,
+    epochs = 6,
     batch_size = 100,
     validation_split = 0.25
   )
@@ -706,7 +723,7 @@ model_build <- function(){
 
 model_build()
 
-multi_model %>% save_model_hdf5("./model/multi_epochs_8.h5")
+multi_model %>% save_model_hdf5("./model/multi_model.h5")
 #---- B model img ----
 
 
@@ -717,7 +734,7 @@ img_model <- keras_model_sequential() %>%
   layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu") %>%
   layer_max_pooling_2d(pool_size = c(2, 2)) %>%
   layer_flatten() %>%
-  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = 32, activation = "relu") %>%
   layer_dense(units = 3, activation = "softmax")
 
 img_model %>% compile(
@@ -728,13 +745,22 @@ img_model %>% compile(
 
 img_history <- img_model %>% fit_generator(
   train_generator,
-  steps_per_epoch = 30,
-  epochs = 30,
+  steps_per_epoch = 10,
+  epochs = 10,
   validation_data = validation_generator,
-  validation_steps = 13
+  validation_steps = nrow(x_img_train)*0.2/32
 )
 
+img_model %>% save_model_hdf5("./model/img_epochs.h5")
+
 # III Prediction -------
+multi_model <- load_model_hdf5("./model/multi_epochs_8.h5")
+
+yhat_multi_model <- multi_model %>% evaluate(., x = list(text_input = as.matrix(x_text_test[sample_test, ]), meta_input = as.matrix(x_meta_test[sample_test, ])),
+                                             y = list(main_output = as.matrix(y_text_test[sample_test, ])))
+
+yhat_img_model <- img_model %>% evaluate_generator(test_generator, steps = 10,
+                                     workers = 8)
 # IV Plots ------
 # ---- B Plot some
 
