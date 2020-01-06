@@ -12,6 +12,7 @@ library(keras)
 library(reticulate)
 library(tensorflow)
 library(plotly)
+library(yardstick)
 
 load("./data.rdata")
 ### Caution!!! For keras to work, anaconda for python must be installed on the computer
@@ -619,6 +620,7 @@ test_generator <- flow_images_from_dataframe(
   batch_size = 32,
   class_mode = "other",
   target_size = c(150, 150),
+  shuffle = FALSE
 )
 # 6 Check if function works
 batch <- generator_next(train_generator)
@@ -632,15 +634,12 @@ plot(as.raster(batch[[1]][1,,,]))
 # II Build Keras Model ----------------------------------------------------
 
 model_build <- function(){
+
   # 1 Define the input layer for text recognition
   text_input <- layer_input(
     shape = ncol(x_text_train),
     dtype = 'int32',
     name  = 'text_input')
-
-
-  # TEXT OUT ---------------------------------------------------------------------
-
 
   lstm_out <- text_input %>%
 
@@ -658,11 +657,6 @@ model_build <- function(){
     layer_dense(units = 16, activation = "relu") %>%
     layer_dropout(rate = 0.3) %>%
     layer_dense(units = 16, activation = "relu")
-
-
-
-  # META OUT ----------------------------------------------------------------
-
 
   meta_input <- layer_input(shape = ncol(x_meta_train), name = 'meta_input', dtype = "float32")
 
@@ -684,11 +678,6 @@ model_build <- function(){
     kernel_initializer = "uniform",
     activation         = "relu")
 
-
-
-  # META OUTPUT -------------------------------------------------------------
-
-
   main_output <- layer_concatenate(c(lstm_out, meta_out)) %>%
     layer_dense(units = 10, activation = 'relu') %>%
     layer_dropout(rate = 0.4) %>%
@@ -696,12 +685,10 @@ model_build <- function(){
     layer_dropout(rate = 0.4) %>%
     layer_dense(units = 3, activation = "softmax", name = "main_output")
 
-
   multi_model <- keras_model(
     inputs = c(text_input, meta_input),
     outputs = c(main_output)
   )
-
 
   # Compile ANN
   multi_model %>% compile(
@@ -723,10 +710,9 @@ model_build <- function(){
 
 model_build()
 
-multi_model %>% save_model_hdf5("./model/multi_model.h5")
 #---- B model img ----
 
-
+# Define the img model consisting of convolutional nets
 img_model <- keras_model_sequential() %>%
   layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu",
                 input_shape = c(150, 150, 3)) %>%
@@ -751,16 +737,54 @@ img_history <- img_model %>% fit_generator(
   validation_steps = nrow(x_img_train)*0.2/32
 )
 
-img_model %>% save_model_hdf5("./model/img_epochs.h5")
+# img_model %>% save_model_hdf5("./model/img_epochs.h5")
 
 # III Prediction -------
-multi_model <- load_model_hdf5("./model/multi_epochs_8.h5")
 
-yhat_multi_model <- multi_model %>% evaluate(., x = list(text_input = as.matrix(x_text_test[sample_test, ]), meta_input = as.matrix(x_meta_test[sample_test, ])),
-                                             y = list(main_output = as.matrix(y_text_test[sample_test, ])))
+# 1 Load saved models
+multi_model <- load_model_hdf5("./model/img_epochs.h5")
+img_model <- load_model_hdf5("./model/multi_model.h5")
 
-yhat_img_model <- img_model %>% evaluate_generator(test_generator, steps = 10,
-                                     workers = 8)
+# 2 Get predictions to perform proper analysis
+multi_pred <- predict(object = multi_model,  x = list(text_input = as.matrix(x_text_test[sample_test, ]), meta_input = as.matrix(x_meta_test[sample_test, ])))
+img_pred <- predict_generator(img_model, test_generator, steps = 4, workers = 8, )
+
+# 4 Create a function to quickly display the results and to create a ensemble estimate
+
+# Params
+# .weight: A double giving the weight which is given on the multi model
+# .truth: A hot-encoded df giving the correct values
+# .multi_pred: A df with the predictioins from the multi model
+# .img_pred: A df with the predictioins img model
+
+predict_class <- function(.weight, .truth, .multi_pred = multi_pred, .img_pred = img_pred){
+
+  # 1 Compute weighted average from both predictions
+  class_weighted <- map_dfc(1:3, ~ .weight*.multi_pred[ ,.] + (1-.weight)*.img_pred[ ,.])
+
+  # 2 Create tbl
+  tibble(
+  truth = apply(.truth, 1, which.max),
+  class_multi = apply(.multi_pred, 1, which.max),
+  class_img = apply(.img_pred, 1, which.max),
+  class_mixed = apply(class_weighted, 1, which.max)
+) %>% mutate_all(~ factor(., levels = c("1","2","3"))  %>%
+                 fct_recode(correct = "1", overrated = "2", underrated = "3"))
+
+}
+
+estimates_tbl <- predict_class(.weight = 0.2, y_text_test[sample_test, ])
+
+# ---- B Model Metrics -----
+
+# 1 Get confusion matrix
+metrics <- confusionMatrix(estimates_tbl$class_mixed, reference = estimates_tbl$truth)
+
+metrics$table
+metrics$byClass
+
+
+
 # IV Plots ------
 # ---- B Plot some
 
